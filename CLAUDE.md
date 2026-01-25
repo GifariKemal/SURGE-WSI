@@ -280,6 +280,7 @@ pytest tests/ -v
 | `src/analysis/regime_detector.py` | HMM regime detection | Bullish/Bearish/Sideways |
 | `src/analysis/poi_detector.py` | POI detection | Order Block & FVG |
 | `src/trading/executor.py` | Main trading loop | Entry point |
+| `src/utils/telegram.py` | Telegram bot | Bidirectional notifications |
 | `config/settings.yaml` | Konfigurasi | Semua settings |
 
 ---
@@ -360,9 +361,10 @@ TIMESCALE_PASSWORD=your_password
 # ===== Redis =====
 REDIS_URL=redis://localhost:6379
 
-# ===== Telegram (Optional) =====
-TELEGRAM_BOT_TOKEN=your_token
-TELEGRAM_CHAT_ID=your_chat_id
+# ===== Telegram Bot (Bidirectional) =====
+TELEGRAM_BOT_TOKEN=your_bot_token      # Get from @BotFather
+TELEGRAM_CHAT_ID=your_chat_id          # Your Telegram user ID
+TELEGRAM_ENABLED=true                   # Enable/disable bot
 ```
 
 ---

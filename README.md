@@ -21,6 +21,7 @@
 - [Struktur Proyek | Project Structure](#-struktur-proyek--project-structure)
 - [Mulai Cepat | Quick Start](#-mulai-cepat--quick-start)
 - [Aturan Trading | Trading Rules](#-aturan-trading--trading-rules)
+- [Telegram Bot](#-telegram-bot)
 - [Target Performa | Performance Targets](#-target-performa--performance-targets)
 - [Dokumentasi | Documentation](#-dokumentasi--documentation)
 - [Referensi | References](#-referensi--references)
@@ -63,7 +64,7 @@ Sistem ini menggabungkan dua metodologi:
 | 📐 **Fair Value Gaps** | Deteksi ketidakseimbangan harga | Price imbalance detection |
 | 🚪 **Smart Exit** | Exit berbasis regime + Partial TP | Regime-based exit + Partial TP strategy |
 | ⚡ **Auto Trading** | Eksekusi otomatis 24/5 | Automated execution 24/5 |
-| 📱 **Telegram Alert** | Notifikasi real-time | Real-time notifications |
+| 📱 **Telegram Bot** | Notifikasi + Request info (2-arah) | Bidirectional notifications & commands |
 
 ---
 
@@ -278,6 +279,92 @@ flowchart LR
 | Max SL (M15 zones) | 30 pips | 30 pips |
 | Max open positions | 3 | 3 |
 | Max daily risk | 3% | 3% |
+
+---
+
+## 📱 Telegram Bot
+
+### Fitur Bidirectional | Bidirectional Features
+
+Bot Telegram mendukung komunikasi 2 arah: menerima notifikasi DAN mengirim perintah.
+
+> Telegram bot supports bidirectional communication: receive notifications AND send commands.
+
+```mermaid
+flowchart LR
+    subgraph System["🖥️ SURGE-WSI"]
+        BOT["🤖 Telegram Bot"]
+    end
+
+    subgraph User["👤 User"]
+        PHONE["📱 Telegram App"]
+    end
+
+    BOT -->|"📤 Notifikasi"| PHONE
+    PHONE -->|"📥 Commands"| BOT
+
+    style BOT fill:#0088cc,color:#fff
+    style PHONE fill:#25D366,color:#fff
+```
+
+### 📤 Notifikasi Keluar | Outgoing Notifications
+
+| Event | Pesan | Message |
+|-------|-------|---------|
+| 🔔 **Signal Baru** | Entry signal terdeteksi | New entry signal detected |
+| ✅ **Trade Opened** | Posisi dibuka (detail lot, SL, TP) | Position opened (lot, SL, TP details) |
+| 💰 **TP Hit** | Take profit tercapai | Take profit reached |
+| 🛑 **SL Hit** | Stop loss tercapai | Stop loss reached |
+| 🔄 **Regime Change** | Perubahan regime HMM | HMM regime changed |
+| 📊 **Daily Summary** | Ringkasan harian | Daily performance summary |
+| ⚠️ **Alert** | Error atau warning sistem | System error or warning |
+
+### 📥 Perintah Masuk | Incoming Commands
+
+| Command | Fungsi | Function |
+|---------|--------|----------|
+| `/status` | Cek status sistem & posisi terbuka | Check system status & open positions |
+| `/balance` | Cek saldo akun | Check account balance |
+| `/positions` | List semua posisi aktif | List all active positions |
+| `/history` | Riwayat trade hari ini | Today's trade history |
+| `/pnl` | Profit/Loss hari ini | Today's P&L |
+| `/regime` | Cek regime HMM saat ini | Check current HMM regime |
+| `/zones` | List POI zones aktif | List active POI zones |
+| `/stats` | Statistik performa | Performance statistics |
+| `/pause` | Pause auto trading | Pause auto trading |
+| `/resume` | Resume auto trading | Resume auto trading |
+| `/help` | Daftar perintah | List of commands |
+
+### Contoh Notifikasi | Notification Example
+
+```
+🔔 NEW SIGNAL - GBPUSD
+
+Direction: 🟢 BUY
+POI Type: Order Block (H1)
+Quality Score: 85/100
+Entry Zone: 1.2650 - 1.2660
+
+Regime: BULLISH (78% confidence)
+Kill Zone: London ✓
+
+⏳ Waiting for rejection candle...
+```
+
+```
+✅ TRADE OPENED - GBPUSD
+
+Direction: 🟢 BUY
+Entry: 1.2655
+Lot Size: 0.33
+
+SL: 1.2625 (-30 pips)
+TP1: 1.2700 (+45 pips) - 50%
+TP2: 1.2730 (+75 pips) - 30%
+TP3: Trailing - 20%
+
+Risk: 1.0% ($100)
+```
 
 ---
 

@@ -22,6 +22,7 @@
 - [Layer 6: Smart Exit](#-layer-6-smart-exit)
 - [Alur Sinyal | Signal Flow](#-alur-sinyal--signal-flow)
 - [Konfigurasi | Configuration](#-konfigurasi--configuration)
+- [Telegram Bot Integration](#-telegram-bot-integration)
 - [Metrik Performa | Performance Metrics](#-metrik-performa--performance-metrics)
 - [Changelog](#-changelog)
 
@@ -775,13 +776,104 @@ take_profit:
   tp3_close_percent: 20
   trailing_atr_multiplier: 1.0
 
-# Alerts
-alerts:
-  telegram:
+# Telegram Bot (Bidirectional)
+telegram:
+  enabled: true
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+  chat_id: "${TELEGRAM_CHAT_ID}"
+
+  # Outgoing Notifications
+  notifications:
+    new_signal: true
+    trade_opened: true
+    trade_closed: true
+    tp_hit: true
+    sl_hit: true
+    regime_change: true
+    daily_summary: true
+    system_alerts: true
+
+  # Incoming Commands
+  commands:
     enabled: true
-    send_signals: true
-    send_trades: true
-    send_daily_summary: true
+    allowed_users:
+      - "${TELEGRAM_CHAT_ID}"  # Only owner can send commands
+```
+
+---
+
+## 📱 Telegram Bot Integration
+
+### Arsitektur Bot | Bot Architecture
+
+```mermaid
+flowchart TB
+    subgraph TelegramBot["📱 Telegram Bot"]
+        direction TB
+        HANDLER["🔄 Message Handler"]
+        NOTIFIER["📤 Notifier"]
+        COMMANDER["📥 Command Processor"]
+    end
+
+    subgraph Core["🖥️ SURGE-WSI Core"]
+        EXECUTOR["Trading Executor"]
+        MONITOR["Position Monitor"]
+        ANALYZER["Performance Analyzer"]
+    end
+
+    subgraph User["👤 User"]
+        APP["📱 Telegram App"]
+    end
+
+    EXECUTOR -->|"Trade Events"| NOTIFIER
+    MONITOR -->|"Position Updates"| NOTIFIER
+    ANALYZER -->|"Stats"| NOTIFIER
+    NOTIFIER -->|"Send Message"| APP
+
+    APP -->|"Commands"| HANDLER
+    HANDLER --> COMMANDER
+    COMMANDER -->|"Query"| EXECUTOR
+    COMMANDER -->|"Query"| MONITOR
+    COMMANDER -->|"Query"| ANALYZER
+
+    style TelegramBot fill:#0088cc,color:#fff
+    style Core fill:#2196f3,color:#fff
+    style User fill:#25D366,color:#fff
+```
+
+### Daftar Perintah | Command List
+
+| Command | Deskripsi | Response |
+|---------|-----------|----------|
+| `/start` | Mulai bot | Welcome message |
+| `/help` | Daftar perintah | List of commands |
+| `/status` | Status sistem | System status + open positions |
+| `/balance` | Saldo akun | Account balance & equity |
+| `/positions` | Posisi aktif | All open positions |
+| `/history` | Riwayat hari ini | Today's closed trades |
+| `/pnl` | P&L hari ini | Today's profit/loss |
+| `/regime` | Regime saat ini | Current HMM regime |
+| `/zones` | POI zones aktif | Active POI zones |
+| `/stats` | Statistik | Performance statistics |
+| `/pause` | Pause trading | Pause auto trading |
+| `/resume` | Resume trading | Resume auto trading |
+
+### Format Notifikasi | Notification Format
+
+```
+📊 DAILY SUMMARY - 25 Jan 2026
+
+Trades: 3 (2W / 1L)
+Win Rate: 66.7%
+P&L: +$156.80 (+1.57%)
+
+Best Trade: GBPUSD +$89.50
+Worst Trade: GBPUSD -$45.20
+
+Regime: 🟢 BULLISH (72%)
+Active Positions: 1
+
+Tomorrow: London session starts 14:00 WIB
 ```
 
 ---
@@ -846,6 +938,7 @@ class PerformanceMetrics:
 | ✅ POI Detection | Order Blocks + Fair Value Gaps |
 | ✅ Partial TP | 50/30/20 strategy implementation |
 | ✅ Smart Exit | Regime flip + Friday close |
+| ✅ Telegram Bot | Bidirectional - notifications + commands |
 
 ---
 
