@@ -1,7 +1,7 @@
 # WORKFLOW.md - Dokumentasi Workflow SURGE-WSI | SURGE-WSI Workflow Documentation
 
 <p align="center">
-  <img src="https://img.shields.io/badge/SURGE--WSI-v3.0-blue?style=for-the-badge" alt="Version"/>
+  <img src="https://img.shields.io/badge/SURGE--WSI-v1.0.0-blue?style=for-the-badge" alt="Version"/>
   <img src="https://img.shields.io/badge/Workflow-Final-green?style=for-the-badge" alt="Workflow"/>
 </p>
 
@@ -835,28 +835,17 @@ class PerformanceMetrics:
 
 ## 📝 Changelog
 
-### v3.0 (Current - Final)
+### v1.0.0 (Current - Initial Release)
 
-| Perubahan | Description |
-|-----------|-------------|
-| ✅ Simplified architecture | Dari 10+ komponen menjadi 6 core layers |
-| ✅ Single Kalman | Removed redundant 3x Kalman filter |
-| ✅ Unified POI | Merged OB + FVG detection |
-| ✅ Removed liquidity layer | Integrated into POI detection |
-| ✅ Added Kill Zones | ICT session-based trading |
-| ✅ Partial TP | Implemented 50/30/20 strategy |
-
-### v2.0
-
-- Added hidden zones (M15)
-- Multi-TF zone detection
-- BOS/ChoCH structure analysis
-
-### v1.0
-
-- Initial concept
-- Basic Kalman + HMM
-- Simple S/D zones
+| Fitur | Description |
+|-------|-------------|
+| ✅ 6-Layer Architecture | Data Pipeline, Regime, POI, Entry, Risk, Exit |
+| ✅ Kalman Filter | Noise reduction untuk clean price data |
+| ✅ HMM Regime | Bullish/Bearish/Sideways detection |
+| ✅ Kill Zones | ICT session-based trading (London/NY) |
+| ✅ POI Detection | Order Blocks + Fair Value Gaps |
+| ✅ Partial TP | 50/30/20 strategy implementation |
+| ✅ Smart Exit | Regime flip + Friday close |
 
 ---
 
@@ -879,7 +868,7 @@ class PerformanceMetrics:
 ---
 
 <p align="center">
-  <b>SURGE-WSI v3.0</b><br>
+  <b>SURGE-WSI v1.0.0</b><br>
   <i>"Smart Entry, Intelligent Exit, Consistent Profits"</i>
 </p>
 

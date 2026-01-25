@@ -1,7 +1,7 @@
 # CLAUDE.md - Instruksi untuk Claude Code | Instructions for Claude Code
 
 <p align="center">
-  <img src="https://img.shields.io/badge/SURGE--WSI-v3.0-blue?style=for-the-badge" alt="Version"/>
+  <img src="https://img.shields.io/badge/SURGE--WSI-v1.0.0-blue?style=for-the-badge" alt="Version"/>
   <img src="https://img.shields.io/badge/Claude-Instructions-purple?style=for-the-badge" alt="Claude"/>
 </p>
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/SURGE--WSI-v3.0-blue?style=for-the-badge" alt="Version"/>
+  <img src="https://img.shields.io/badge/SURGE--WSI-v1.0.0-blue?style=for-the-badge" alt="Version"/>
   <img src="https://img.shields.io/badge/Status-Development-yellow?style=for-the-badge" alt="Status"/>
   <img src="https://img.shields.io/badge/Python-3.11+-green?style=for-the-badge&logo=python" alt="Python"/>
   <img src="https://img.shields.io/badge/MT5-Finex-orange?style=for-the-badge" alt="MT5"/>
