@@ -15,7 +15,10 @@
       "mcp__filesystem__write_file",
       "mcp__git__git_status",
       "mcp__git__git_log",
-      "mcp__git__git_add"
+      "mcp__git__git_add",
+      "mcp__git__git_diff",
+      "mcp__git__git_commit",
+      "mcp__git__git_push"
     ]
   },
   "enableAllProjectMcpServers": true,
