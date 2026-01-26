@@ -1,0 +1,12 @@
+{
+  "id": "l2_002",
+  "title": "Regime Probability Distribution",
+  "category": "layer2_regime",
+  "style": "infographic",
+  "prompt": "Create a probability distribution visualization for market regime detection. Top section: Stacked area chart over time showing three probability bands - green area for 'P(Bullish)', red area for 'P(Bearish)', gray area for 'P(Sideways)' - all summing to 100%. Middle section: Current regime indicator showing dominant state with large icon and percentage (e.g., 'BULLISH 73%'). Bottom section: Three horizontal progress bars showing individual probabilities with percentage labels. Include x-axis labeled 'Time' and y-axis labeled 'Probability'. Use gradient fills for areas. Dark slate background (#1E293B). Add threshold line at 60% marked 'Confidence Threshold'. Modern dashboard style.",
+  "negative_prompt": "pixelated charts, inconsistent colors between sections, overlapping legends, 3D effects",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#1E293B", "#10B981", "#EF4444", "#6B7280", "#FBBF24", "#E2E8F0"],
+  "elements": ["stacked_area_chart", "progress_bars", "regime_indicator", "threshold_line", "labels"],
+  "tags": ["probability", "distribution", "regime", "chart", "hmm_output"]
+}

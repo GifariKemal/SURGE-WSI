@@ -1,0 +1,59 @@
+; SURGE-WSI EA v1.00 - Standard Settings
+; For GBPUSD H1 Timeframe
+; Copyright 2025, SURIOTA Team
+
+; === Risk Management ===
+RiskPercent=1.0
+RecoveryRiskPercent=0.5
+MinRRRatio=1.5
+MaxTradesPerDay=3
+MaxDrawdownPercent=10.0
+MaxConsecutiveLosses=3
+DailyLossLimit=3.0
+
+; === Zone Detection ===
+SwingLookback=5
+MaxBaseCandles=5
+MinImbalanceRatio=1.5
+MinQualityScore=50
+MaxZoneAge=200
+MaxTestCount=2
+
+; === Kill Zone Hours (UTC) ===
+UseKillZone=true
+LondonStart=8
+LondonEnd=12
+NYStart=13
+NYEnd=17
+LondonCloseStart=15
+LondonCloseEnd=17
+
+; === December Filter ===
+UseDecemberFilter=true
+DecemberSignalOnlyDay=1
+DecemberMonitoringDay=15
+
+; === Entry Confirmation ===
+RejectionWickRatio=0.5
+PinBarWickRatio=2.0
+
+; === Partial TP Settings ===
+UsePartialTP=true
+TP1_RR=1.0
+TP1_Percent=50.0
+TP2_RR=2.0
+TP2_Percent=30.0
+TP3_RR=3.0
+UseBreakeven=true
+UseTrailingAfterTP2=true
+
+; === Trailing Stop ===
+TrailingATRMultiplier=1.5
+ATRPeriod=14
+
+; === Display ===
+ShowZones=true
+ShowSignals=true
+DemandZoneColor=16750899
+SupplyZoneColor=3937500
+MagicNumber=2025125

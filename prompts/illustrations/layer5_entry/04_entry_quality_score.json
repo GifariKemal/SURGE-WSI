@@ -1,0 +1,12 @@
+{
+  "id": "l5_004",
+  "title": "Entry Quality Score Components",
+  "category": "layer5_entry",
+  "style": "ui_dashboard",
+  "prompt": "Create a dashboard showing entry signal quality scoring. Center: Large radial chart with 5 spokes representing score components, filled area showing current scores. Components: 'POI Quality' (0-25), 'Rejection Strength' (0-20), 'Regime Alignment' (0-20), 'Kill Zone Bonus' (0-20), 'Multi-TF Confluence' (0-15). Each spoke labeled with current value. Total score displayed in center: '87/100'. Right panel: Quality tier badges - 'A+ Trade' (90-100, gold), 'A Trade' (75-89, green), 'B Trade' (60-74, yellow), 'Skip' (<60, red). Current tier highlighted. Bottom: Individual component progress bars. Dark slate background (#1E293B). Modern analytics dashboard style.",
+  "negative_prompt": "cluttered radar chart, overlapping labels, hard to read scores, inconsistent styling",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#1E293B", "#10B981", "#FBBF24", "#EF4444", "#3B82F6", "#F59E0B", "#E2E8F0"],
+  "elements": ["radar_chart", "score_display", "tier_badges", "progress_bars", "labels"],
+  "tags": ["quality", "score", "entry", "components", "dashboard"]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "l7_003",
+  "title": "Trade Position Lifecycle",
+  "category": "layer7_exit",
+  "style": "technical_diagram",
+  "prompt": "Create a horizontal timeline showing complete trade lifecycle. Seven stages from left to right connected by arrows: 1) 'SIGNAL' (bell icon, blue) - trigger received. 2) 'VALIDATE' (checkmark, purple) - risk checks pass. 3) 'EXECUTE' (play button, green) - order sent to MT5. 4) 'OPEN' (circle, green) - position active, show position card. 5) 'MANAGE' (sliders icon, orange) - monitor, adjust SL/TP. 6) 'EXIT' (door icon, red) - TP hit / SL hit / manual close. 7) 'LOG' (document icon, gray) - record to database. Below timeline: Duration indicators between stages. Branch at MANAGE showing possible outcomes: 'TP Hit (Win)', 'SL Hit (Loss)', 'Regime Flip', 'Friday Close'. Include state badges at each stage. Dark slate background (#1E293B). Process timeline style.",
+  "negative_prompt": "cluttered stages, overlapping branches, inconsistent icons, hard to follow timeline",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#1E293B", "#3B82F6", "#8B5CF6", "#10B981", "#F59E0B", "#EF4444", "#6B7280"],
+  "elements": ["timeline", "stage_icons", "arrows", "branches", "state_badges", "duration_labels"],
+  "tags": ["lifecycle", "position", "trade_flow", "stages", "process"]
+}

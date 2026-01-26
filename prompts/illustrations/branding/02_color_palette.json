@@ -1,0 +1,12 @@
+{
+  "id": "brand_002",
+  "title": "SURGE-WSI Brand Color Palette",
+  "category": "branding",
+  "style": "minimalist",
+  "prompt": "Create a brand color palette reference sheet for SURGE-WSI. Display color swatches in organized sections: PRIMARY COLORS - 'Deep Navy' (#0F172A, backgrounds), 'Royal Blue' (#3B82F6, primary actions), 'Cyan' (#06B6D4, highlights). SEMANTIC COLORS - 'Bullish Green' (#10B981, profits/buy), 'Bearish Red' (#EF4444, losses/sell), 'Warning Yellow' (#FBBF24, caution), 'Sideways Gray' (#6B7280, neutral). ACCENT COLORS - 'Gold' (#F59E0B, premium), 'Purple' (#8B5CF6, regime). Each swatch shows: color block, hex code, RGB values, usage description. Include gradient combinations. Show text contrast examples (white text on dark, dark text on light). Clean design system reference style.",
+  "negative_prompt": "inconsistent swatch sizes, missing color codes, hard to read labels, unorganized layout",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#0F172A", "#3B82F6", "#06B6D4", "#10B981", "#EF4444", "#FBBF24", "#8B5CF6", "#F59E0B"],
+  "elements": ["color_swatches", "hex_codes", "usage_labels", "gradient_samples", "contrast_examples"],
+  "tags": ["colors", "palette", "branding", "design_system", "style_guide"]
+}

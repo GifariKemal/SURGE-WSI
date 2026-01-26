@@ -1,0 +1,12 @@
+{
+  "id": "l4_004",
+  "title": "POI Lifecycle Flow",
+  "category": "layer4_poi",
+  "style": "technical_diagram",
+  "prompt": "Create a horizontal lifecycle flowchart for Point of Interest (POI). Five stages flowing left to right: Stage 1 'DETECTION' (magnifying glass icon, blue #3B82F6) - 'OB/FVG identified on chart'. Stage 2 'VALIDATION' (checkmark icon, purple #8B5CF6) - 'Quality score calculated'. Stage 3 'ACTIVE' (target icon, green #10B981) - 'Waiting for price to reach zone'. Stage 4 'TRIGGERED' (bell icon, orange #F59E0B) - 'Entry signal confirmed'. Stage 5 'MITIGATED' (crossed-out icon, gray #6B7280) - 'Zone used or invalidated'. Connect stages with arrows. Show branching at Stage 4: 'Trade Executed' or 'Zone Expired'. Add quality score badge (e.g., '85/100') at Stage 2. Dark background (#1E293B). Modern process flow style.",
+  "negative_prompt": "cluttered stages, inconsistent icons, overlapping arrows, hard to follow flow",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#1E293B", "#3B82F6", "#8B5CF6", "#10B981", "#F59E0B", "#6B7280"],
+  "elements": ["stage_circles", "icons", "arrows", "labels", "branches"],
+  "tags": ["lifecycle", "poi", "process", "detection", "mitigation"]
+}

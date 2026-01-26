@@ -1,0 +1,12 @@
+{
+  "id": "l6_002",
+  "title": "Risk Limits Dashboard",
+  "category": "layer6_risk",
+  "style": "ui_dashboard",
+  "prompt": "Create a comprehensive risk monitoring dashboard. Four gauge meters in a 2x2 grid: Top-left 'Daily Risk Used' (0-3%, currently 1.5%, yellow zone at 2%, red at 3%), Top-right 'Open Positions' (0-3, currently 2, with position icons), Bottom-left 'Weekly Drawdown' (0-10%, currently 4%, showing this week's P&L), Bottom-right 'Consecutive Losses' (0-5, currently 1, with loss streak counter). Center: Account equity chart (mini line graph) showing daily balance. Right panel: Active position cards showing symbol, direction, current P&L. Alert banner at top if any limit approaching. Dark slate background (#1E293B). Red/yellow/green color coding for risk levels. Trading cockpit aesthetic.",
+  "negative_prompt": "too many metrics, overlapping gauges, hard to read values, inconsistent gauge styles",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#1E293B", "#10B981", "#FBBF24", "#EF4444", "#3B82F6", "#E2E8F0"],
+  "elements": ["gauge_meters", "equity_chart", "position_cards", "alert_banner", "grid_layout"],
+  "tags": ["risk", "dashboard", "limits", "monitoring", "equity"]
+}

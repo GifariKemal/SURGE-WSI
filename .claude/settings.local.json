@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__filesystem__list_directory",
+      "Bash(start_trading.bat)",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI && start_trading.bat\")",
+      "Bash(cmd.exe /c \"tasklist | findstr /i \"\"python docker terminal64\"\"\")",
+      "Bash(cmd.exe /c \"docker ps --format \"\"table {{.Names}}\\\\t{{.Status}}\"\" 2>&1\")",
+      "Bash(powershell.exe -Command \"Get-Process | Where-Object {$_Name -match ''python|docker|terminal64''} | Select-Object Name, Id, CPU | Format-Table -AutoSize\")",
+      "Bash(powershell.exe -Command \"docker ps --format ''table {{.Names}}\\\\t{{.Status}}''\")",
+      "Bash(powershell.exe -Command:*)",
+      "Bash(python main.py:*)",
+      "mcp__filesystem__directory_tree",
+      "mcp__filesystem__create_directory",
+      "mcp__filesystem__write_file",
+      "mcp__git__git_status",
+      "mcp__git__git_log",
+      "mcp__git__git_add"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "shadcn"
+  ]
+}

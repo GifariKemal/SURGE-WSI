@@ -1,0 +1,12 @@
+{
+  "id": "gen_002",
+  "title": "SURGE-WSI 6-Layer Architecture",
+  "category": "general",
+  "style": "technical_diagram",
+  "prompt": "Create a professional vertical flowchart showing 6 connected layers of a trading system architecture. Each layer is a horizontal bar with distinct color: Layer 1 'Data Pipeline' (blue #3B82F6) with database and filter icons, Layer 2 'Regime + Time' (purple #8B5CF6) with clock and state machine icons, Layer 3 'POI Detection' (green #10B981) with chart pattern icons, Layer 4 'Entry Trigger' (orange #F59E0B) with alert/bell icons, Layer 5 'Risk Management' (red #EF4444) with shield and calculator icons, Layer 6 'Smart Exit' (cyan #06B6D4) with door/exit icons. Layers connected by glowing arrows flowing downward. Dark slate background (#1E293B). Clean modern infographic style with icons inside each layer bar. Labels on each layer clearly visible.",
+  "negative_prompt": "blurry, 3D perspective, cluttered, overlapping elements, hard to read text, inconsistent colors, cartoonish",
+  "aspect_ratio": "9:16",
+  "color_scheme": ["#1E293B", "#3B82F6", "#8B5CF6", "#10B981", "#F59E0B", "#EF4444", "#06B6D4"],
+  "elements": ["flowchart", "layers", "arrows", "icons", "labels"],
+  "tags": ["architecture", "layers", "system_design", "flowchart", "technical"]
+}

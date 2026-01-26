@@ -1,0 +1,12 @@
+{
+  "id": "int_003",
+  "title": "Trading Performance Dashboard",
+  "category": "integration",
+  "style": "ui_dashboard",
+  "prompt": "Create a comprehensive trading performance dashboard. Header: 'SURGE-WSI Performance' with date range selector. Top row: Four stat cards - 'Total P&L' (+$2,450, green with chart icon), 'Win Rate' (68%, donut chart), 'Profit Factor' (1.85, comparison bar), 'Total Trades' (47, trade icon). Middle row: Large equity curve chart showing account balance over time with drawdown overlay. Bottom left: Trade distribution pie chart by symbol (GBPUSD, EURUSD, etc.). Bottom center: Monthly P&L bar chart (green/red bars). Bottom right: Recent trades table with columns: Date, Symbol, Direction, P&L. Filter buttons: '1W', '1M', '3M', 'YTD'. Dark slate background (#1E293B). Modern analytics dashboard.",
+  "negative_prompt": "too many charts, cluttered layout, inconsistent card sizes, hard to read numbers",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#1E293B", "#10B981", "#EF4444", "#3B82F6", "#F59E0B", "#8B5CF6", "#E2E8F0"],
+  "elements": ["stat_cards", "equity_curve", "pie_chart", "bar_chart", "data_table", "filters"],
+  "tags": ["performance", "dashboard", "analytics", "equity", "statistics"]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "int_002",
+  "title": "Telegram Bot Interface Mockup",
+  "category": "integration",
+  "style": "ui_dashboard",
+  "prompt": "Create a Telegram chat interface mockup showing trading bot messages. Phone frame with dark Telegram theme. Show conversation with 'SURGE-WSI Bot'. Messages include: Trade alert card with GBPUSD BUY signal (green header, entry/SL/TP levels, quality score badge), Status update showing 'Position Opened', P&L notification showing '+45 pips / +$135', Daily summary card with win rate and total P&L. Include bot command buttons at bottom: '/status', '/positions', '/report', '/pause'. Show both bot messages (left-aligned) and user commands (right-aligned, blue bubbles). Add SURGE-WSI bot avatar icon. Include timestamp on messages. Realistic Telegram mobile app aesthetic.",
+  "negative_prompt": "unrealistic UI, wrong Telegram styling, cluttered messages, hard to read text",
+  "aspect_ratio": "9:16",
+  "color_scheme": ["#1E2C3A", "#10B981", "#EF4444", "#3B82F6", "#FBBF24", "#E2E8F0"],
+  "elements": ["phone_frame", "chat_bubbles", "signal_cards", "command_buttons", "bot_avatar", "timestamps"],
+  "tags": ["telegram", "bot", "notifications", "mobile", "interface"]
+}

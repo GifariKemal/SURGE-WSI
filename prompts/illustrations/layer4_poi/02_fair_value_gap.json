@@ -1,0 +1,12 @@
+{
+  "id": "l4_002",
+  "title": "Fair Value Gap Visualization",
+  "category": "layer4_poi",
+  "style": "candlestick",
+  "prompt": "Create a trading chart illustrating Fair Value Gap (FVG) concept. Show 8-12 candlesticks with a strong impulse move creating a gap. Highlight the FVG: The gap between the high of candle 1 and low of candle 3 (where candle 2's body doesn't overlap). Mark the gap zone with a distinctive rectangle in orange (#F97316 at 30% opacity). Label: 'Fair Value Gap', 'Candle 1 High', 'Candle 3 Low', 'Imbalance Zone'. Show price potentially returning to fill the gap. Add 'FVG' badge on the zone. Include zoomed inset showing the three-candle pattern clearly. Dark background (#0F172A). Green/red candlesticks. Professional charting style with clean annotations.",
+  "negative_prompt": "confusing annotations, overlapping zones, too many indicators, amateur style",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#0F172A", "#10B981", "#EF4444", "#F97316", "#FBBF24", "#E2E8F0"],
+  "elements": ["candlesticks", "fvg_zone", "candle_labels", "inset_zoom", "arrows"],
+  "tags": ["fvg", "fair_value_gap", "imbalance", "smc", "poi"]
+}

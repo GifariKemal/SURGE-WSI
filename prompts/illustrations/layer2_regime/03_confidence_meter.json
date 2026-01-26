@@ -1,0 +1,12 @@
+{
+  "id": "l2_003",
+  "title": "Trading Confidence Meter",
+  "category": "layer2_regime",
+  "style": "ui_dashboard",
+  "prompt": "Create a circular gauge meter showing trading confidence level. Large semi-circular gauge in center with needle pointing to current value. Gauge zones: Red zone (0-40%) labeled 'NO TRADE', Yellow zone (40-60%) labeled 'CAUTION', Green zone (60-100%) labeled 'TRADE'. Current value displayed digitally in center: '78%'. Below gauge: Current regime badge (e.g., 'BULLISH' in green pill). Side panel showing factors: 'Regime Confidence: 85%', 'Kill Zone Active: YES', 'POI Quality: HIGH'. Use dark background (#0F172A) with glowing gauge elements. Modern car dashboard / cockpit instrument aesthetic. Include subtle tick marks and labels around gauge arc.",
+  "negative_prompt": "flat design, no depth, hard to read numbers, inconsistent lighting, cluttered side panel",
+  "aspect_ratio": "1:1",
+  "color_scheme": ["#0F172A", "#10B981", "#FBBF24", "#EF4444", "#3B82F6", "#E2E8F0"],
+  "elements": ["circular_gauge", "needle", "zones", "digital_display", "factor_list", "badge"],
+  "tags": ["gauge", "confidence", "meter", "dashboard", "trading_signal"]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "l4_003",
+  "title": "Swing Points Detection",
+  "category": "layer4_poi",
+  "style": "candlestick",
+  "prompt": "Create a trading chart showing swing point detection. Display 20-25 candlesticks with clear wave structure. Mark Swing Highs with downward triangles in red (#EF4444) at peak points, Swing Lows with upward triangles in green (#10B981) at trough points. Connect swing points with a zigzag line in cyan (#06B6D4). Label key swings: 'HH' (Higher High), 'HL' (Higher Low), 'LH' (Lower High), 'LL' (Lower Low). Show market structure clearly - either uptrend (HH, HL pattern) or downtrend (LH, LL pattern). Include swing lookback period indicator '[5 candles]'. Dark background (#0F172A). Add horizontal dashed lines at key swing levels. Professional market structure analysis style.",
+  "negative_prompt": "too many swing points, cluttered labels, inconsistent markers, hard to follow structure",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#0F172A", "#10B981", "#EF4444", "#06B6D4", "#FBBF24", "#E2E8F0"],
+  "elements": ["candlesticks", "swing_markers", "zigzag_line", "structure_labels", "horizontal_levels"],
+  "tags": ["swing", "market_structure", "hh_hl", "ll_lh", "trend"]
+}

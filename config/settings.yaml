@@ -1,0 +1,152 @@
+# SURGE-WSI Configuration
+# 6-Layer Quantitative Trading System
+
+# ============================================
+# Layer 1: Kalman Filter (Noise Reduction)
+# ============================================
+kalman:
+  # Fast filter - responsive to quick changes
+  fast_process_noise: 0.05
+  fast_measurement_noise: 0.05
+
+  # Medium filter - balanced
+  medium_process_noise: 0.01
+  medium_measurement_noise: 0.1
+
+  # Slow filter - smooth trend
+  slow_process_noise: 0.001
+  slow_measurement_noise: 0.2
+
+# ============================================
+# Layer 2: HMM Regime Detection
+# ============================================
+regime:
+  n_states: 3            # BULLISH, BEARISH, SIDEWAYS
+  lookback: 50           # Bars for feature calculation
+  min_samples: 100       # Minimum samples before training
+  retrain_every: 200     # Retrain model every N updates
+  min_probability: 0.6   # Minimum probability to act
+
+# ============================================
+# Layer 3: Kill Zone (Time Filter)
+# ============================================
+killzone:
+  enabled: true
+
+  # London Session (UTC)
+  london_start: 8
+  london_end: 12
+
+  # New York Session (UTC)
+  new_york_start: 13
+  new_york_end: 17
+
+  # London Close (overlap)
+  london_close_start: 15
+  london_close_end: 17
+
+# ============================================
+# Layer 4: POI Detection (Order Blocks + FVG)
+# ============================================
+poi:
+  swing_length: 10       # Bars for swing detection
+  ob_min_strength: 0.6   # Minimum Order Block strength
+  fvg_min_pips: 3.0      # Minimum FVG size in pips
+  max_poi_age_bars: 100  # Maximum age for valid POI
+
+  # Feature toggles
+  use_order_blocks: true
+  use_fvg: true
+  use_bos: true          # Break of Structure
+
+# ============================================
+# Layer 5: Entry Trigger (LTF Confirmation)
+# ============================================
+entry:
+  swing_length: 3        # LTF swing detection bars
+  sweep_min_pips: 2.0    # Minimum liquidity sweep distance
+  mss_lookback: 10       # MSS detection lookback
+  fvg_min_pips: 1.0      # LTF FVG minimum size
+  min_quality_score: 60.0  # Minimum signal quality
+  max_sl_pips: 50.0      # Maximum stop loss
+  rejection_wick_ratio: 0.5  # Wick > 50% of candle body
+
+# ============================================
+# Layer 6: Exit Management
+# ============================================
+exit:
+  # Partial Take Profit Strategy
+  tp1_rr: 1.0            # TP1 at 1:1 R:R
+  tp1_percent: 0.5       # Close 50% at TP1
+
+  tp2_rr: 2.0            # TP2 at 2:1 R:R
+  tp2_percent: 0.3       # Close 30% at TP2
+
+  tp3_rr: 3.0            # TP3 at 3:1 R:R
+  tp3_percent: 0.2       # Close remaining 20%
+
+  # Trailing Stop
+  trailing_enabled: true
+  trailing_start_rr: 1.5 # Start trailing after 1.5R
+  trailing_step_pips: 10.0
+
+  # Breakeven
+  move_sl_to_be_at_tp1: true
+
+# ============================================
+# Risk Management
+# ============================================
+risk:
+  # Position sizing by zone quality
+  high_quality_threshold: 80.0   # Quality >= 80%
+  high_quality_risk: 0.015       # Risk 1.5%
+
+  medium_quality_threshold: 60.0 # Quality >= 60%
+  medium_quality_risk: 0.01      # Risk 1.0%
+
+  low_quality_risk: 0.005        # Risk 0.5%
+
+  # Daily limits
+  daily_profit_target: 100.0
+  daily_loss_limit: 150.0
+  max_open_positions: 1
+
+  # Per trade limits
+  max_lot_size: 0.1
+  min_lot_size: 0.01
+
+# ============================================
+# Trading Settings
+# ============================================
+trading:
+  symbol: "GBPUSD"
+  magic_number: 20250125
+  enabled: false
+  mode: "demo"           # demo or live
+
+  # Timeframes
+  timeframe_htf: "H4"    # Higher timeframe for POI
+  timeframe_ltf: "M5"    # Lower timeframe for entry
+
+  # Constants
+  pip_value: 10.0        # USD per pip per lot
+
+# ============================================
+# Telegram Settings
+# ============================================
+telegram:
+  enabled: true
+  # Commands: /status, /balance, /positions, /regime, /pois
+  # Admin: /pause, /resume, /close_all
+
+# ============================================
+# Database Settings
+# ============================================
+database:
+  # Tables:
+  # - ohlcv: Price data (hypertable)
+  # - signals: Generated signals
+  # - trades: Executed trades
+  # - regimes: Regime history
+  retention_days: 365
+  chunk_interval: "7 days"

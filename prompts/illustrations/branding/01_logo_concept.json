@@ -1,0 +1,12 @@
+{
+  "id": "brand_001",
+  "title": "SURIOTA / SURGE-WSI Logo Concept",
+  "category": "branding",
+  "style": "minimalist",
+  "prompt": "Create a modern minimalist logo for 'SURGE-WSI' trading system by SURIOTA. Concept: Combine a rising wave/surge motif with financial chart elements. The wave should suggest upward momentum and intelligence (subtle brain/neural pattern integration). Include the letters 'S' and 'W' stylized within the design. Primary mark should work as an icon. Color variations: Primary (blue #3B82F6 and cyan #06B6D4 gradient), Monochrome (white on dark), and Accent (with gold #F59E0B highlights). Show: Main logo, Icon-only version, and Wordmark 'SURGE-WSI' with 'by SURIOTA' tagline. Clean vector style suitable for app icons, trading terminals, and documentation. Professional fintech branding aesthetic.",
+  "negative_prompt": "complex gradients, too many elements, hard to reproduce at small size, dated style, clip art",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#0F172A", "#3B82F6", "#06B6D4", "#F59E0B", "#FFFFFF"],
+  "elements": ["logo_mark", "wave_motif", "icon_version", "wordmark", "color_variations"],
+  "tags": ["logo", "branding", "suriota", "surge", "fintech"]
+}

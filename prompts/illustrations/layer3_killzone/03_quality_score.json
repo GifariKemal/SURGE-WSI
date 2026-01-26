@@ -1,0 +1,12 @@
+{
+  "id": "l3_003",
+  "title": "Session Quality Score Breakdown",
+  "category": "layer3_killzone",
+  "style": "ui_dashboard",
+  "prompt": "Create a quality score dashboard showing kill zone scoring components. Top: Large circular progress ring showing total score '85/100' in center with 'Kill Zone Score' label. Below: Four horizontal component bars showing individual scores: 'Session Active' (0-30 points) with clock icon, 'Overlap Bonus' (0-20 points) with intersection icon, 'Day of Week' (0-25 points) with calendar icon, 'Time to Close' (0-25 points) with countdown icon. Each bar is a gradient from red (0) through yellow to green (max). Current values marked with indicator. Right side: Quality badge showing 'HIGH QUALITY' in green or 'LOW QUALITY' in red. Dark slate background (#1E293B). Modern score dashboard aesthetic.",
+  "negative_prompt": "inconsistent bar sizes, overlapping elements, hard to read scores, too colorful",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#1E293B", "#10B981", "#FBBF24", "#EF4444", "#3B82F6", "#E2E8F0"],
+  "elements": ["progress_ring", "score_bars", "icons", "quality_badge", "labels"],
+  "tags": ["score", "quality", "killzone", "components", "dashboard"]
+}

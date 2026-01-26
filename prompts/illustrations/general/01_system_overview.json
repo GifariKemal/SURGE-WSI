@@ -1,0 +1,12 @@
+{
+  "id": "gen_001",
+  "title": "SURGE-WSI System Overview",
+  "category": "general",
+  "style": "technical_diagram",
+  "prompt": "Create a professional hero illustration for SURGE-WSI algorithmic trading system. Show a central brain-like neural network connected to financial market elements: candlestick charts, forex currency pairs (GBPUSD, EURUSD), MetaTrader 5 logo, database symbols, and Telegram notification icons. Use a dark blue gradient background (#0F172A to #1E3A8A) with glowing cyan (#06B6D4) and emerald (#10B981) accent lines connecting all components. Modern fintech aesthetic with clean geometric shapes. The text 'SURGE-WSI' should be prominently displayed with subtitle 'Weekly Swing Intelligence'. Include subtle grid lines suggesting data analysis.",
+  "negative_prompt": "blurry, low quality, amateur, cluttered, too many colors, cartoonish, unprofessional, hand-drawn sketchy style, watermarks",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#0F172A", "#1E3A8A", "#06B6D4", "#10B981", "#F59E0B"],
+  "elements": ["neural_network", "candlestick_chart", "database", "telegram_icon", "mt5_logo", "currency_symbols"],
+  "tags": ["hero", "overview", "branding", "fintech", "trading_system"]
+}

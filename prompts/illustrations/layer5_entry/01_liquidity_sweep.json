@@ -1,0 +1,12 @@
+{
+  "id": "l5_001",
+  "title": "Liquidity Sweep Pattern",
+  "category": "layer5_entry",
+  "style": "candlestick",
+  "prompt": "Create a trading chart illustrating Liquidity Sweep (stop hunt) concept. Show 15-20 candlesticks with a clear swing low followed by a sweep. Mark the original swing low with horizontal dashed line labeled 'Liquidity Pool / Stop Losses'. Show a wick piercing below this level (the sweep) then reversing sharply - highlight this candle. Add dollar sign icons ($$$) below the swing low representing trapped stops. Label: 'Swing Low', 'Liquidity Sweep', 'Smart Money Entry', 'Reversal'. Show buy arrow after the sweep. Include magnified inset of the sweep candle. Dark background (#0F172A). Use red zone below swing low, green for reversal area. ICT/SMC trading concept style.",
+  "negative_prompt": "confusing price action, too many annotations, unclear sweep, amateur chart",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#0F172A", "#10B981", "#EF4444", "#FBBF24", "#3B82F6", "#E2E8F0"],
+  "elements": ["candlesticks", "liquidity_line", "sweep_highlight", "dollar_icons", "entry_arrow", "inset"],
+  "tags": ["liquidity", "sweep", "stop_hunt", "smc", "entry"]
+}

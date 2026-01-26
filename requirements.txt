@@ -1,0 +1,51 @@
+# SURGE-WSI Dependencies
+# Quantitative Trading System with Smart Money Concepts
+
+# ============================================
+# CORE DEPENDENCIES (Required)
+# ============================================
+
+# Kalman Filter
+filterpy>=1.4.5
+
+# Hidden Markov Model (Regime Detection)
+hmmlearn>=0.3.0
+
+# Smart Money Concepts (Order Blocks, FVG, BOS)
+smartmoneyconcepts>=0.0.26
+
+# MetaTrader 5 Integration
+MetaTrader5>=5.0.45
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Database (TimescaleDB/PostgreSQL)
+asyncpg>=0.28.0
+psycopg2-binary>=2.9.9
+
+# Redis Cache
+redis>=5.0.0
+
+# Telegram Bot
+python-telegram-bot>=20.6
+
+# Configuration
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+PyYAML>=6.0.1
+
+# Logging
+loguru>=0.7.2
+
+# Environment Variables
+python-dotenv>=1.0.0
+
+# ============================================
+# DEVELOPMENT DEPENDENCIES (Optional)
+# ============================================
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0

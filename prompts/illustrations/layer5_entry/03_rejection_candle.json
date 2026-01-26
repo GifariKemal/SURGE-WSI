@@ -1,0 +1,12 @@
+{
+  "id": "l5_003",
+  "title": "Rejection Candle Pattern",
+  "category": "layer5_entry",
+  "style": "candlestick",
+  "prompt": "Create a detailed illustration of rejection candle patterns. Split into two sections: Left side shows 'Bullish Rejection' - a candle with long lower wick (>50% of range) touching a support zone, small body at top, labeled with measurements '30% Body', '70% Wick'. Right side shows 'Bearish Rejection' - candle with long upper wick touching resistance, small body at bottom. Include formula: 'Wick Ratio = Wick Length / Total Range > 50%'. Show POI zone behind each candle. Add checkmark for valid rejection, X for invalid (small wick). Include entry trigger arrow. Color code: green body for bullish, red for bearish, zones in semi-transparent blue. Dark background (#0F172A). Educational diagram style.",
+  "negative_prompt": "confusing measurements, inconsistent candle sizes, overlapping labels, unclear zones",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#0F172A", "#10B981", "#EF4444", "#3B82F6", "#FBBF24", "#E2E8F0"],
+  "elements": ["candles", "measurement_lines", "poi_zones", "formula", "checkmarks", "arrows"],
+  "tags": ["rejection", "candle", "wick", "entry_trigger", "pattern"]
+}

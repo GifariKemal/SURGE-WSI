@@ -1,0 +1,64 @@
+services:
+  # ============================================
+  # TimescaleDB - Time-series database
+  # ============================================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: surge_wsi_timescaledb
+    restart: unless-stopped
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: surge_wsi
+      POSTGRES_PASSWORD: surge_wsi_secret
+      POSTGRES_DB: surge_wsi
+    volumes:
+      - surge_wsi_timescaledb_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U surge_wsi -d surge_wsi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Redis - Cache & real-time data
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: surge_wsi_redis
+    restart: unless-stopped
+    ports:
+      - "6381:6379"
+    volumes:
+      - surge_wsi_redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Adminer - Database management UI (optional)
+  # ============================================
+  adminer:
+    image: adminer:latest
+    container_name: surge_wsi_adminer
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: timescaledb
+    depends_on:
+      - timescaledb
+
+volumes:
+  surge_wsi_timescaledb_data:
+    driver: local
+  surge_wsi_redis_data:
+    driver: local
+
+networks:
+  default:
+    name: surge_wsi_network

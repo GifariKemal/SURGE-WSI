@@ -1,0 +1,12 @@
+{
+  "id": "l1_001",
+  "title": "Kalman Filter Noise Reduction",
+  "category": "layer1_data",
+  "style": "infographic",
+  "prompt": "Create an educational infographic showing Kalman Filter noise reduction for financial data. Split view: Left side shows a noisy, jagged blue line representing raw price data with label 'Raw Price (Noisy)'. Right side shows a smooth, clean orange line representing filtered output with label 'Kalman Filtered (Smooth)'. In the middle, show a filter funnel or processing box with mathematical symbols (sigma, matrices). Include small graphs below showing: 'Velocity' (first derivative), 'Acceleration' (second derivative). Use gradient background from dark blue (#1E3A8A) to slate (#334155). Add subtle grid lines. Include formula hint: 'x(k) = F*x(k-1) + B*u(k) + w(k)'. Modern data visualization style.",
+  "negative_prompt": "cluttered, too many formulas, hard to understand, pixelated graphs, inconsistent line styles",
+  "aspect_ratio": "16:9",
+  "color_scheme": ["#1E3A8A", "#3B82F6", "#F97316", "#10B981", "#E2E8F0"],
+  "elements": ["line_charts", "filter_funnel", "mathematical_symbols", "before_after", "labels"],
+  "tags": ["kalman", "filter", "noise_reduction", "signal_processing", "data_science"]
+}
