@@ -126,6 +126,10 @@ class HMMRegimeDetector:
         # State mapping (learned from data characteristics)
         self.state_to_regime: Dict[int, MarketRegime] = {}
 
+        # Normalization parameters
+        self._feature_means: Optional[np.ndarray] = None
+        self._feature_stds: Optional[np.ndarray] = None
+
         self._update_count = 0
         self._last_info: Optional[RegimeInfo] = None
 
@@ -156,6 +160,24 @@ class HMMRegimeDetector:
 
         return current, historical
 
+    def _normalize_features(self, features: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Normalize features to zero mean and unit variance
+
+        Args:
+            features: Raw features array
+
+        Returns:
+            Tuple of (normalized_features, means, stds)
+        """
+        means = np.mean(features, axis=0)
+        stds = np.std(features, axis=0)
+
+        # Prevent division by zero
+        stds = np.where(stds < 1e-8, 1.0, stds)
+
+        normalized = (features - means) / stds
+        return normalized, means, stds
+
     def _train(self):
         """Train HMM model on historical data"""
         if not HMM_AVAILABLE:
@@ -170,24 +192,38 @@ class HMMRegimeDetector:
         if len(features) < self.min_samples:
             return
 
+        # Check for valid data variance
+        feature_std = np.std(features, axis=0)
+        if np.any(feature_std < 1e-8):
+            logger.debug("Features have near-zero variance, skipping HMM training")
+            return
+
+        # Normalize features for better HMM training
+        normalized_features, self._feature_means, self._feature_stds = self._normalize_features(features)
+
         # Suppress convergence warnings during training
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
             try:
-                # Initialize HMM
+                # Initialize HMM with diagonal covariance (more stable)
                 self.model = hmm.GaussianHMM(
                     n_components=self.n_states,
-                    covariance_type="full",
+                    covariance_type="diag",  # Use diagonal for stability
                     n_iter=100,
-                    random_state=42
+                    random_state=42,
+                    init_params="stmc",  # Initialize all params
+                    params="stmc"
                 )
 
-                # Fit model
-                self.model.fit(features)
+                # Add small regularization to prevent singular covariance
+                self.model.min_covar = 1e-3
+
+                # Fit model on normalized features
+                self.model.fit(normalized_features)
 
                 # Map states to regimes based on mean returns
-                self._map_states_to_regimes(features)
+                self._map_states_to_regimes(normalized_features)
 
                 self._is_trained = True
                 logger.debug(f"HMM trained on {len(features)} samples")
@@ -254,6 +290,10 @@ class HMMRegimeDetector:
 
         # Get current features
         current_features, _ = self._calculate_features()
+
+        # Normalize current features using training params
+        if self._feature_means is not None and self._feature_stds is not None:
+            current_features = (current_features - self._feature_means) / self._feature_stds
 
         try:
             # Predict state probabilities
@@ -373,3 +413,5 @@ class HMMRegimeDetector:
         self._is_trained = False
         self.model = None
         self.state_to_regime.clear()
+        self._feature_means = None
+        self._feature_stds = None

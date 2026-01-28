@@ -33,21 +33,35 @@ from src.data.db_handler import DBHandler
 from src.data.cache import RedisCache
 from src.trading.executor import TradeExecutor, ExecutorState
 
+# MT5 Timeframe mapping for auto sync
+import MetaTrader5 as mt5
+TIMEFRAMES_MAP = {
+    "M5": mt5.TIMEFRAME_M5,
+    "M15": mt5.TIMEFRAME_M15,
+    "H1": mt5.TIMEFRAME_H1,
+    "H4": mt5.TIMEFRAME_H4,
+    "D1": mt5.TIMEFRAME_D1,
+}
+
 
 class SurgeWSI:
     """Main SURGE-WSI Application"""
 
-    def __init__(self, mode: str = "demo"):
+    def __init__(self, mode: str = "demo", verbose: bool = False):
         """Initialize SURGE-WSI
 
         Args:
             mode: Trading mode ('demo', 'live', 'backtest')
+            verbose: Enable verbose logging
         """
         self.mode = mode
+        self.verbose = verbose
+        self.autotrading_enabled = False
 
         # Setup logger
+        log_level = "DEBUG" if verbose else ("INFO" if mode != "backtest" else "WARNING")
         setup_logger(
-            log_level="INFO" if mode != "backtest" else "WARNING",
+            log_level=log_level,
             log_file=f"logs/surge_wsi_{mode}.log",
             console=True
         )
@@ -137,14 +151,25 @@ class SurgeWSI:
             return False
 
         # Connect database (optional)
+        self._db_connected = False
         try:
-            await self.db.connect()
-            await self.db.initialize_tables()
+            if await self.db.connect():
+                await self.db.initialize_tables()
+                self._db_connected = True
+                # Auto sync initial data
+                await self._auto_sync_database()
         except Exception as e:
             logger.warning(f"Database not available: {e}")
 
         # Connect Redis (optional)
         self.cache.connect()
+
+        # Check AutoTrading status
+        self.autotrading_enabled = self.mt5.is_autotrading_enabled()
+        if self.autotrading_enabled:
+            logger.info("AutoTrading: ENABLED - System can execute trades")
+        else:
+            logger.warning("AutoTrading: DISABLED - Enable in MT5 terminal to trade!")
 
         # Initialize Telegram
         if self.telegram:
@@ -156,6 +181,49 @@ class SurgeWSI:
 
         logger.info("Initialization complete")
         return True
+
+    async def _auto_sync_database(self):
+        """Auto sync recent data from MT5 to database"""
+        if not self._db_connected:
+            return
+
+        import pandas as pd
+
+        logger.info("Auto syncing data to database...")
+        symbol = config.trading.symbol
+        timeframes = ["M5", "M15", "H1", "H4", "D1"]
+        bars_per_tf = {"M5": 500, "M15": 200, "H1": 100, "H4": 50, "D1": 30}
+
+        total_synced = 0
+        for tf in timeframes:
+            try:
+                tf_enum = TIMEFRAMES_MAP.get(tf)
+                if tf_enum is None:
+                    continue
+
+                bars = bars_per_tf.get(tf, 100)
+                rates = mt5.copy_rates_from_pos(symbol, tf_enum, 0, bars)
+
+                if rates is None or len(rates) == 0:
+                    continue
+
+                # Convert to DataFrame
+                df = pd.DataFrame(rates)
+                df['time'] = pd.to_datetime(df['time'], unit='s', utc=True)
+                df.set_index('time', inplace=True)
+                df.columns = ['open', 'high', 'low', 'close', 'tick_volume', 'spread', 'real_volume']
+                df = df[['open', 'high', 'low', 'close', 'tick_volume']]
+                df.rename(columns={'tick_volume': 'volume'}, inplace=True)
+
+                # Save to database
+                count = await self.db.save_ohlcv(symbol, tf, df)
+                total_synced += count if count else 0
+                logger.debug(f"Synced {count} bars for {symbol} {tf}")
+
+            except Exception as e:
+                logger.warning(f"Failed to sync {tf}: {e}")
+
+        logger.info(f"Auto sync complete: {total_synced} bars synced to database")
 
     def _setup_executor_callbacks(self):
         """Setup executor MT5 callbacks"""
@@ -185,6 +253,9 @@ class SurgeWSI:
         self.telegram.on_pause = self._telegram_pause
         self.telegram.on_resume = self._telegram_resume
         self.telegram.on_close_all = self._telegram_close_all
+        self.telegram.on_test_buy = self._telegram_test_buy
+        self.telegram.on_test_sell = self._telegram_test_sell
+        self.telegram.on_autotrading = self._telegram_autotrading
 
     # MT5 callbacks
     async def _get_account_info(self):
@@ -295,6 +366,116 @@ class SurgeWSI:
 
         return f"Closed {closed}/{len(positions)} positions"
 
+    async def _telegram_test_buy(self):
+        """Test BUY order with 0.01 lot"""
+        # Always check autotrading status live
+        self.autotrading_enabled = self.mt5.is_autotrading_enabled()
+        if not self.autotrading_enabled:
+            return "AutoTrading DISABLED in MT5!\n\nEnable: Tools > Options > Expert Advisors > Allow Algo Trading\nOr click AutoTrading button (Ctrl+E)"
+
+        symbol = config.trading.symbol
+        tick = self.mt5.get_tick_sync(symbol)
+        if not tick:
+            return "Failed to get price from MT5"
+
+        try:
+            logger.info(f"Executing TEST BUY {symbol} 0.01 lot @ {tick['ask']:.5f}")
+            result = await self.mt5.place_market_order(
+                symbol=symbol,
+                order_type="BUY",
+                volume=0.01,
+                sl=0,
+                tp=0,
+                comment="TEST_BUY",
+                magic=config.trading.magic_number
+            )
+
+            if result is None:
+                return "TEST BUY Failed: Order rejected by MT5\n\nCheck MT5 Journal for details."
+
+            if result.get('success') or result.get('ticket'):
+                msg = TF.header("TEST BUY Executed", TF.ROCKET)
+                msg += TF.item("Symbol", symbol)
+                msg += TF.item("Volume", "0.01 lot")
+                msg += TF.item("Price", f"{result.get('price', tick['ask']):.5f}")
+                msg += TF.item("Ticket", result.get('ticket', 'N/A'), last=True)
+                logger.info(f"TEST BUY success: ticket={result.get('ticket')}")
+                return msg
+            else:
+                error_msg = result.get('message', result.get('comment', 'Unknown error'))
+                return f"TEST BUY Failed: {error_msg}"
+
+        except Exception as e:
+            logger.error(f"TEST BUY exception: {e}")
+            return f"TEST BUY Error: {e}"
+
+    async def _telegram_test_sell(self):
+        """Test SELL order with 0.01 lot"""
+        # Always check autotrading status live
+        self.autotrading_enabled = self.mt5.is_autotrading_enabled()
+        if not self.autotrading_enabled:
+            return "AutoTrading DISABLED in MT5!\n\nEnable: Tools > Options > Expert Advisors > Allow Algo Trading\nOr click AutoTrading button (Ctrl+E)"
+
+        symbol = config.trading.symbol
+        tick = self.mt5.get_tick_sync(symbol)
+        if not tick:
+            return "Failed to get price from MT5"
+
+        try:
+            logger.info(f"Executing TEST SELL {symbol} 0.01 lot @ {tick['bid']:.5f}")
+            result = await self.mt5.place_market_order(
+                symbol=symbol,
+                order_type="SELL",
+                volume=0.01,
+                sl=0,
+                tp=0,
+                comment="TEST_SELL",
+                magic=config.trading.magic_number
+            )
+
+            if result is None:
+                return "TEST SELL Failed: Order rejected by MT5\n\nCheck MT5 Journal for details."
+
+            if result.get('success') or result.get('ticket'):
+                msg = TF.header("TEST SELL Executed", TF.ROCKET)
+                msg += TF.item("Symbol", symbol)
+                msg += TF.item("Volume", "0.01 lot")
+                msg += TF.item("Price", f"{result.get('price', tick['bid']):.5f}")
+                msg += TF.item("Ticket", result.get('ticket', 'N/A'), last=True)
+                logger.info(f"TEST SELL success: ticket={result.get('ticket')}")
+                return msg
+            else:
+                error_msg = result.get('message', result.get('comment', 'Unknown error'))
+                return f"TEST SELL Failed: {error_msg}"
+
+        except Exception as e:
+            logger.error(f"TEST SELL exception: {e}")
+            return f"TEST SELL Error: {e}"
+
+    async def _telegram_autotrading(self):
+        """Check AutoTrading status"""
+        self.autotrading_enabled = self.mt5.is_autotrading_enabled()
+
+        # Also get terminal info for more details
+        terminal_info = mt5.terminal_info()
+
+        msg = TF.header("AutoTrading Status", TF.GEAR)
+        if self.autotrading_enabled:
+            msg += TF.item("Status", "ENABLED", last=True)
+            msg += "\nSystem can execute trades automatically."
+        else:
+            msg += TF.item("Status", "DISABLED", last=True)
+            msg += "\n\nTo Enable AutoTrading:"
+            msg += "\n1. Tools > Options > Expert Advisors"
+            msg += "\n2. Check 'Allow Algorithmic Trading'"
+            msg += "\n3. Or press Ctrl+E"
+
+        if terminal_info:
+            msg += f"\n\nTerminal: {terminal_info.name}"
+            msg += f"\nTrade Allowed: {terminal_info.trade_allowed}"
+
+        return msg
+
     async def warmup(self):
         """Warmup with historical data"""
         logger.info("Starting warmup...")
@@ -336,9 +517,13 @@ class SurgeWSI:
             msg += TF.item("Symbol", config.trading.symbol)
             msg += TF.item("Market", market_msg)
             msg += TF.item("Session", session)
-            msg += TF.item("Kill Zone", "Yes" if in_kz else "No", last=True)
+            msg += TF.item("Kill Zone", "Yes" if in_kz else "No")
+            autotrading_status = "ENABLED" if self.autotrading_enabled else "DISABLED"
+            msg += TF.item("AutoTrading", autotrading_status, last=True)
             msg += TF.spacer()
-            msg += "Commands: /status /balance /positions /regime"
+            if not self.autotrading_enabled:
+                msg += "WARNING: Enable AutoTrading in MT5!\n\n"
+            msg += "Commands:\n/status /balance /positions\n/test_buy /test_sell /autotrading"
 
             await self.telegram.send(msg)
             # Start polling for commands
@@ -411,6 +596,7 @@ async def main():
     parser.add_argument("--live", action="store_true", help="Run in live mode")
     parser.add_argument("--backtest", action="store_true", help="Run backtest")
     parser.add_argument("--interval", type=int, default=60, help="Polling interval (seconds)")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     args = parser.parse_args()
 
     # Determine mode
@@ -422,7 +608,7 @@ async def main():
         mode = "demo"
 
     # Create and run
-    app = SurgeWSI(mode=mode)
+    app = SurgeWSI(mode=mode, verbose=args.verbose)
 
     if not await app.initialize():
         logger.error("Initialization failed")

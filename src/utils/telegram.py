@@ -806,6 +806,9 @@ class TelegramNotifier:
         self.on_close_all: Optional[Callable] = None
         self.on_force_auto: Optional[Callable] = None
         self.on_force_signal: Optional[Callable] = None
+        self.on_test_buy: Optional[Callable] = None
+        self.on_test_sell: Optional[Callable] = None
+        self.on_autotrading: Optional[Callable] = None
 
     async def initialize(self) -> bool:
         """Initialize bot
@@ -850,6 +853,9 @@ class TelegramNotifier:
             self._app.add_handler(CommandHandler("close_all", self._handle_close_all))
             self._app.add_handler(CommandHandler("force_auto", self._handle_force_auto))
             self._app.add_handler(CommandHandler("force_signal", self._handle_force_signal))
+            self._app.add_handler(CommandHandler("test_buy", self._handle_test_buy))
+            self._app.add_handler(CommandHandler("test_sell", self._handle_test_sell))
+            self._app.add_handler(CommandHandler("autotrading", self._handle_autotrading))
             self._app.add_handler(CommandHandler("help", self._handle_help))
 
             await self._app.initialize()
@@ -985,6 +991,30 @@ class TelegramNotifier:
             await update.message.reply_text(result, parse_mode='HTML')
         else:
             await update.message.reply_text("Cannot close positions")
+
+    async def _handle_test_buy(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /test_buy command"""
+        if self.on_test_buy:
+            result = await self.on_test_buy()
+            await update.message.reply_text(result, parse_mode='HTML')
+        else:
+            await update.message.reply_text("Test buy not available")
+
+    async def _handle_test_sell(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /test_sell command"""
+        if self.on_test_sell:
+            result = await self.on_test_sell()
+            await update.message.reply_text(result, parse_mode='HTML')
+        else:
+            await update.message.reply_text("Test sell not available")
+
+    async def _handle_autotrading(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /autotrading command"""
+        if self.on_autotrading:
+            result = await self.on_autotrading()
+            await update.message.reply_text(result, parse_mode='HTML')
+        else:
+            await update.message.reply_text("AutoTrading check not available")
 
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
