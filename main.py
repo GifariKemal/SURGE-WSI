@@ -310,7 +310,7 @@ class SurgeWSI:
         in_kz, session = self.executor.is_in_killzone()
         regime_info = self.executor.regime_detector.last_info
         activity = self.executor._last_activity
-        stats = self.executor.stats
+        daily_stats = self.executor.risk_manager.get_daily_stats()
 
         # Build message
         msg = TF.header(f"Hourly Status - {now.strftime('%H:%M')} UTC", TF.CLOCK)
@@ -326,8 +326,8 @@ class SurgeWSI:
         msg += TF.spacer()
         msg += TF.item("Balance", f"${account.get('balance', 0):,.2f}")
         msg += TF.item("Equity", f"${account.get('equity', 0):,.2f}")
-        msg += TF.item("Daily P/L", f"${stats.daily_pnl:+.2f}")
-        msg += TF.item("Trades Today", stats.trades_today, last=True)
+        msg += TF.item("Daily P/L", f"${daily_stats['pnl']:+.2f}")
+        msg += TF.item("Trades Today", daily_stats['trades'], last=True)
 
         await self.telegram.send(msg)
         logger.debug(f"Hourly status sent to Telegram")
