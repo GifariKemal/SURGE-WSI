@@ -136,6 +136,7 @@ class SurgeWSI:
 
         # Running state
         self._running = False
+        self._last_hourly_status = None  # Track last hourly notification time
 
     async def initialize(self) -> bool:
         """Initialize all components
@@ -290,6 +291,46 @@ class SurgeWSI:
     async def _send_telegram(self, message):
         if self.telegram:
             await self.telegram.send(message)
+
+    async def _send_hourly_status(self, price: float, account: dict):
+        """Send hourly status notification to Telegram"""
+        if not self.telegram:
+            return
+
+        now = datetime.now(timezone.utc)
+
+        # Check if hour has changed since last notification
+        if self._last_hourly_status is not None:
+            if now.hour == self._last_hourly_status.hour and now.date() == self._last_hourly_status.date():
+                return  # Same hour, skip
+
+        self._last_hourly_status = now
+
+        # Gather status info
+        in_kz, session = self.executor.is_in_killzone()
+        regime_info = self.executor.regime_detector.last_info
+        activity = self.executor._last_activity
+        stats = self.executor.stats
+
+        # Build message
+        msg = TF.header(f"Hourly Status - {now.strftime('%H:%M')} UTC", TF.CLOCK)
+        msg += TF.spacer()
+        msg += TF.item("Price", f"{price:.5f}")
+        msg += TF.item("Session", session if in_kz else "Outside KZ")
+        msg += TF.item("Regime", regime_info.regime.value if regime_info else "N/A")
+        msg += TF.item("Bias", regime_info.bias if regime_info else "N/A")
+
+        if activity:
+            msg += TF.item("Activity", f"{activity.level.value} ({activity.score:.0f})")
+
+        msg += TF.spacer()
+        msg += TF.item("Balance", f"${account.get('balance', 0):,.2f}")
+        msg += TF.item("Equity", f"${account.get('equity', 0):,.2f}")
+        msg += TF.item("Daily P/L", f"${stats.daily_pnl:+.2f}")
+        msg += TF.item("Trades Today", stats.trades_today, last=True)
+
+        await self.telegram.send(msg)
+        logger.debug(f"Hourly status sent to Telegram")
 
     # Telegram command handlers
     async def _telegram_status(self):
@@ -627,6 +668,9 @@ class SurgeWSI:
                             f"Activity: {activity_str} | "
                             f"Regime: {regime_str} | Bias: {bias_str}"
                         )
+
+                    # Hourly status notification to Telegram
+                    await self._send_hourly_status(price, account)
 
                     # Process tick
                     result = await self.executor.process_tick(price, balance)
