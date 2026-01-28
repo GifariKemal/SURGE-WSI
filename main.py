@@ -608,8 +608,8 @@ class SurgeWSI:
                     price = tick.get('bid', 0)
                     balance = account.get('balance', 0)
 
-                    # Check conditions for debug (every 5 loops)
-                    if loop_count % 5 == 1:
+                    # Log status every loop (was every 5 loops)
+                    if loop_count % 1 == 0:  # Every loop = every interval
                         in_kz, session = self.executor.is_in_killzone()
                         regime_info = self.executor.regime_detector.last_info
                         state = self.executor.state.value
