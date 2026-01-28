@@ -9,8 +9,13 @@ Usage:
 Author: SURIOTA Team
 """
 import sys
+import io
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Fix Windows console encoding for emojis
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 import asyncio
 import pandas as pd
