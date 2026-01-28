@@ -107,6 +107,7 @@ def run_month_backtest(
     print(f"HTF bars: {len(htf)}, LTF bars: {len(ltf)}")
 
     # Create backtester with trend filter and relaxed entry filter
+    # NOTE: Hybrid Mode disabled - backtest shows KZ Only performs better (+52% vs +18%)
     bt = Backtester(
         symbol="GBPUSD",
         start_date=start_date.strftime("%Y-%m-%d"),
@@ -116,7 +117,8 @@ def run_month_backtest(
         spread_pips=1.5,
         use_killzone=True,
         use_trend_filter=True,      # Enable trend alignment filter
-        use_relaxed_filter=True     # Enable relaxed filters in low-activity periods
+        use_relaxed_filter=True,    # Enable relaxed filters in low-activity periods
+        use_hybrid_mode=False       # Disabled: KZ Only performs better in backtest
     )
 
     # Load data

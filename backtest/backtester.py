@@ -34,6 +34,7 @@ from src.trading.risk_manager import RiskManager
 from src.trading.exit_manager import ExitManager
 from src.trading.trade_mode_manager import TradeModeManager, TradeMode, TradeModeConfig
 from src.utils.killzone import KillZone
+from src.utils.dynamic_activity_filter import DynamicActivityFilter, ActivityLevel
 
 
 class TradeStatus(Enum):
@@ -181,7 +182,8 @@ class Backtester:
         spread_pips: float = 1.5,
         use_killzone: bool = True,
         use_trend_filter: bool = True,  # Enable trend alignment filter
-        use_relaxed_filter: bool = True  # NEW: Relax filters in low-activity periods
+        use_relaxed_filter: bool = True,  # NEW: Relax filters in low-activity periods
+        use_hybrid_mode: bool = True  # NEW: Enable Hybrid Mode (KZ + Dynamic Activity)
     ):
         """Initialize backtester
 
@@ -193,6 +195,7 @@ class Backtester:
             pip_value: Value per pip per standard lot
             spread_pips: Spread in pips
             use_killzone: Filter by kill zones
+            use_hybrid_mode: Enable Hybrid Mode (trade in KZ OR when high activity)
         """
         self.symbol = symbol
         self.start_date = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -203,6 +206,7 @@ class Backtester:
         self.use_killzone = use_killzone
         self.use_trend_filter = use_trend_filter
         self.use_relaxed_filter = use_relaxed_filter
+        self.use_hybrid_mode = use_hybrid_mode
 
         # Regime stability settings
         self.min_regime_stability_bars = 5  # Regime must be stable for N bars
@@ -223,6 +227,15 @@ class Backtester:
         self.market_filter = MarketFilter()  # Trend alignment filter
         self.relaxed_filter = RelaxedEntryFilter()  # NEW: Relax filters in low-activity
         self.trade_mode_manager = TradeModeManager(TradeModeConfig())  # Trade mode manager
+
+        # Hybrid Mode: Dynamic Activity Filter (conservative settings)
+        self.activity_filter = DynamicActivityFilter(
+            min_atr_pips=6.0,
+            min_bar_range_pips=4.0,
+            activity_threshold=40.0,
+            pip_size=0.0001
+        )
+        self.activity_filter.outside_kz_min_score = 80.0  # Conservative threshold
 
         # State
         self.balance = initial_balance
@@ -247,6 +260,10 @@ class Backtester:
         self._debug_entry_fail = 0
         self._debug_entry_ok = 0
         self._debug_trend_filtered = 0  # Trades filtered by trend alignment
+        self._debug_hybrid_trades = 0  # Trades outside KZ via hybrid mode
+        self._debug_kz_trades = 0  # Trades inside KZ
+        self._last_activity = None  # Track last activity info
+        self._current_is_hybrid = False  # Flag for current entry check
         self._debug_relaxed_entries = 0  # NEW: Entries with relaxed filters
         self._debug_signal_only = 0  # NEW: Trades in signal-only mode
 
@@ -347,10 +364,27 @@ class Backtester:
                     self._process_htf_bar(htf.iloc[:htf_idx+1])
                     htf_idx += 1
 
-            # Check kill zone
+            # Check kill zone and hybrid mode
+            in_kz, session = self.killzone.is_in_killzone(current_time)
+            should_trade = False
+            is_hybrid_entry = False
+
             if self.use_killzone:
-                in_kz, _ = self.killzone.is_in_killzone(current_time)
-                if not in_kz:
+                if in_kz:
+                    should_trade = True
+                elif self.use_hybrid_mode:
+                    # Hybrid Mode: check activity outside KZ
+                    ltf_recent = ltf.iloc[max(0, ltf_pos-20):ltf_pos+1]
+                    activity = self.activity_filter.check_activity(
+                        current_time, current_high, current_low, ltf_recent
+                    )
+                    self._last_activity = activity
+                    # Conservative: only trade if HIGH activity AND score >= 80
+                    if activity.level == ActivityLevel.HIGH and activity.score >= 80:
+                        should_trade = True
+                        is_hybrid_entry = True
+
+                if not should_trade:
                     ltf_pos += 1
                     continue
 
@@ -360,6 +394,8 @@ class Backtester:
 
             # Check for new entry (if no open position)
             if self.open_trade is None:
+                # Store hybrid entry flag for tracking
+                self._current_is_hybrid = is_hybrid_entry
                 # Use positional index for slicing
                 ltf_window = ltf.iloc[max(0, ltf_pos-50):ltf_pos+1]
                 # Pass HTF data for trend filter (use current htf_idx)
@@ -624,6 +660,13 @@ class Backtester:
             quality_score=quality_score
         )
 
+        # Track hybrid vs KZ trades
+        if hasattr(self, '_current_is_hybrid') and self._current_is_hybrid:
+            self._debug_hybrid_trades += 1
+            logger.debug(f"Hybrid entry (outside KZ): {direction} @ {current_price:.5f}")
+        else:
+            self._debug_kz_trades += 1
+
         logger.debug(f"Entry: {direction} @ {current_price:.5f}, SL: {signal.stop_loss:.5f}")
 
     def _manage_position(
@@ -765,7 +808,8 @@ class Backtester:
                         f"not_in_poi={self._debug_not_in_poi}, in_poi={self._debug_in_poi}, "
                         f"entry_fail={self._debug_entry_fail}, entry_ok={self._debug_entry_ok}, "
                         f"trend_filtered={self._debug_trend_filtered}, relaxed_entries={self._debug_relaxed_entries}, "
-                        f"signal_only={self._debug_signal_only}")
+                        f"signal_only={self._debug_signal_only}, "
+                        f"kz_trades={self._debug_kz_trades}, hybrid_trades={self._debug_hybrid_trades}")
 
         if not self.trades:
             return result
