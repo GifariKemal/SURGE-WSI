@@ -130,6 +130,14 @@ class TradeExecutor:
         self._last_signal_time: Optional[datetime] = None
         self._cooldown_hours = 4
 
+        # Previous state tracking for notifications
+        self._prev_regime: Optional[str] = None
+        self._prev_bias: Optional[str] = None
+        self._prev_bull_pois: int = 0
+        self._prev_bear_pois: int = 0
+        self._prev_at_poi: bool = False
+        self._last_status_time: Optional[datetime] = None
+
         # MT5/MCP callbacks
         self.get_account_info: Optional[Callable] = None
         self.get_tick: Optional[Callable] = None
@@ -242,6 +250,90 @@ class TradeExecutor:
         hours_since = (now - self._last_signal_time).total_seconds() / 3600
         return hours_since < self._cooldown_hours
 
+    async def _send_condition_notification(
+        self,
+        regime_info,
+        bull_pois: int,
+        bear_pois: int,
+        at_poi: bool,
+        poi_info,
+        price: float
+    ):
+        """Send Telegram notification when conditions change"""
+        if not self.send_telegram:
+            return
+
+        notifications = []
+
+        # Check regime change
+        current_regime = regime_info.regime.value if regime_info else None
+        current_bias = regime_info.bias if regime_info else None
+
+        if current_regime and current_regime != self._prev_regime:
+            emoji = "🟢" if current_regime == "BULLISH" else ("🔴" if current_regime == "BEARISH" else "⚪")
+            notifications.append(f"{emoji} <b>Regime Changed:</b> {current_regime}")
+            self._prev_regime = current_regime
+
+        if current_bias and current_bias != self._prev_bias:
+            notifications.append(f"📊 <b>Bias:</b> {current_bias}")
+            self._prev_bias = current_bias
+
+        # Check POI changes (only notify significant changes)
+        if bull_pois != self._prev_bull_pois or bear_pois != self._prev_bear_pois:
+            if bull_pois > self._prev_bull_pois:
+                notifications.append(f"🎯 <b>New Bullish POI detected!</b> Total: {bull_pois}")
+            if bear_pois > self._prev_bear_pois:
+                notifications.append(f"🎯 <b>New Bearish POI detected!</b> Total: {bear_pois}")
+            self._prev_bull_pois = bull_pois
+            self._prev_bear_pois = bear_pois
+
+        # Check if price entered POI zone
+        if at_poi and not self._prev_at_poi and poi_info:
+            notifications.append(
+                f"⚡ <b>Price at POI Zone!</b>\n"
+                f"├ Price: {price:.5f}\n"
+                f"├ Zone: {poi_info.zone_low:.5f} - {poi_info.zone_high:.5f}\n"
+                f"└ Waiting for entry trigger..."
+            )
+        self._prev_at_poi = at_poi
+
+        # Send notifications
+        if notifications:
+            msg = "🔔 <b>SURGE-WSI Alert</b>\n\n" + "\n".join(notifications)
+            await self.send_telegram(msg)
+
+    async def _send_periodic_status(self, price: float, regime_info, bull_pois: int, bear_pois: int):
+        """Send periodic status update every 30 minutes"""
+        if not self.send_telegram:
+            return
+
+        now = datetime.now(timezone.utc)
+
+        # Send status every 30 minutes
+        if self._last_status_time is None or (now - self._last_status_time).total_seconds() >= 1800:
+            in_kz, session = self.is_in_killzone()
+            regime = regime_info.regime.value if regime_info else "N/A"
+            bias = regime_info.bias if regime_info else "N/A"
+
+            msg = f"📊 <b>Status Update</b>\n\n"
+            msg += f"├ Price: {price:.5f}\n"
+            msg += f"├ Session: {session}\n"
+            msg += f"├ Kill Zone: {'Yes' if in_kz else 'No'}\n"
+            msg += f"├ Regime: {regime}\n"
+            msg += f"├ Bias: {bias}\n"
+            msg += f"├ Bullish POIs: {bull_pois}\n"
+            msg += f"└ Bearish POIs: {bear_pois}\n"
+
+            if not in_kz:
+                msg += "\n⏳ <i>Waiting for Kill Zone...</i>"
+            elif bias == "SELL" and bear_pois == 0:
+                msg += "\n⏳ <i>Waiting for Bearish POI...</i>"
+            elif bias == "BUY" and bull_pois == 0:
+                msg += "\n⏳ <i>Waiting for Bullish POI...</i>"
+
+            await self.send_telegram(msg)
+            self._last_status_time = now
+
     async def process_tick(
         self,
         price: float,
@@ -298,22 +390,45 @@ class TradeExecutor:
             if htf_data is not None:
                 self.poi_detector.detect(htf_data)
                 self.poi_detector.update_mitigation(htf_data)
+        else:
+            logger.debug("No get_ohlcv_htf callback")
+            return None
 
         # Check if price at POI
         poi_result = self.poi_detector.last_result
         if poi_result is None:
+            logger.debug("No POI result available")
             return None
 
+        # Count active POIs
+        bull_pois = len(poi_result.bullish_pois) if poi_result.bullish_pois else 0
+        bear_pois = len(poi_result.bearish_pois) if poi_result.bearish_pois else 0
+        logger.debug(f"POIs available: {bull_pois} bullish, {bear_pois} bearish")
+
         at_poi, poi_info = poi_result.price_at_poi(price, direction)
+
+        # Send condition notifications
+        await self._send_condition_notification(
+            regime_info, bull_pois, bear_pois, at_poi, poi_info, price
+        )
+
+        # Send periodic status
+        await self._send_periodic_status(price, regime_info, bull_pois, bear_pois)
+
         if not at_poi or poi_info is None:
+            logger.debug(f"Price {price:.5f} not at any {direction} POI zone")
             return None
+
+        logger.info(f"Price at POI! Zone: {poi_info.zone_high:.5f}-{poi_info.zone_low:.5f}")
 
         # Get LTF data for entry confirmation
         if self.get_ohlcv_ltf:
             ltf_data = await self.get_ohlcv_ltf(self.symbol, self.timeframe_ltf, 100)
             if ltf_data is None:
+                logger.debug("Failed to get LTF data")
                 return None
         else:
+            logger.debug("No get_ohlcv_ltf callback")
             return None
 
         # Check entry confirmation
@@ -322,7 +437,22 @@ class TradeExecutor:
         )
 
         if not should_enter or signal is None:
+            logger.debug(f"Entry trigger not confirmed for {direction}")
             return None
+
+        logger.info(f"Entry trigger confirmed! Signal: {signal.signal_type}")
+
+        # Send entry trigger notification
+        if self.send_telegram:
+            msg = f"🚨 <b>Entry Trigger Confirmed!</b>\n\n"
+            msg += f"├ Direction: {direction}\n"
+            msg += f"├ Entry: {signal.entry_price:.5f}\n"
+            msg += f"├ Stop Loss: {signal.stop_loss:.5f}\n"
+            msg += f"├ SL Pips: {signal.sl_pips:.1f}\n"
+            msg += f"├ Quality: {signal.quality_score:.0f}%\n"
+            msg += f"└ Type: {signal.signal_type}\n"
+            msg += "\n⏳ <i>Checking risk & executing...</i>"
+            await self.send_telegram(msg)
 
         self.stats.total_signals += 1
 

@@ -529,23 +529,41 @@ class SurgeWSI:
             # Start polling for commands
             asyncio.create_task(self.telegram.start_polling())
 
+        loop_count = 0
         try:
             while self._running:
+                loop_count += 1
                 try:
                     # Get account info
                     account = self.mt5.get_account_info_sync()
                     if not account:
+                        logger.warning("Failed to get account info")
                         await asyncio.sleep(interval_seconds)
                         continue
 
                     # Get current price
                     tick = self.mt5.get_tick_sync(config.trading.symbol)
                     if not tick:
+                        logger.warning("Failed to get tick")
                         await asyncio.sleep(interval_seconds)
                         continue
 
                     price = tick.get('bid', 0)
                     balance = account.get('balance', 0)
+
+                    # Check conditions for debug (every 5 loops)
+                    if loop_count % 5 == 1:
+                        in_kz, session = self.executor.is_in_killzone()
+                        regime_info = self.executor.regime_detector.last_info
+                        state = self.executor.state.value
+                        regime_str = regime_info.regime.value if regime_info else 'N/A'
+                        bias_str = regime_info.bias if regime_info else 'N/A'
+                        logger.info(
+                            f"[Loop {loop_count}] Price: {price:.5f} | "
+                            f"State: {state} | Session: {session} | "
+                            f"KZ: {'Yes' if in_kz else 'No'} | "
+                            f"Regime: {regime_str} | Bias: {bias_str}"
+                        )
 
                     # Process tick
                     result = await self.executor.process_tick(price, balance)
