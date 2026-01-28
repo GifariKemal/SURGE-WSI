@@ -392,16 +392,14 @@ class DynamicActivityFilter:
                 emoji = activity.get_emoji()
                 return True, f"{emoji} Kill Zone ({session_name}) + Activity {activity.score:.0f}", activity
         else:
-            # Outside Kill Zone - need high activity
-            if activity.score >= self.outside_kz_min_score and spread_ok:
+            # Outside Kill Zone - CONSERVATIVE: need VERY high activity
+            # Only trade if score >= threshold AND level is HIGH
+            # Based on backtest: trades outside KZ have lower win rate
+            if activity.score >= self.outside_kz_min_score and activity.level == ActivityLevel.HIGH and spread_ok:
                 emoji = activity.get_emoji()
-                return True, f"{emoji} High activity outside KZ ({activity.score:.0f})", activity
-            elif activity.level == ActivityLevel.HIGH and spread_ok:
-                # Even if score slightly below threshold, HIGH level is OK
-                emoji = activity.get_emoji()
-                return True, f"{emoji} Market active outside KZ ({activity.score:.0f})", activity
+                return True, f"{emoji} Exceptional activity outside KZ ({activity.score:.0f})", activity
             else:
-                return False, f"Outside KZ, activity too low ({activity.score:.0f})", activity
+                return False, f"Outside KZ, activity insufficient ({activity.score:.0f}, need {self.outside_kz_min_score}+)", activity
 
     def format_status(self, activity: ActivityScore, in_kz: bool, session: str) -> str:
         """Format activity status for Telegram/logging"""

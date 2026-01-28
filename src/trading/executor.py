@@ -121,13 +121,16 @@ class TradeExecutor:
         self.exit_manager = ExitManager()
         self.trade_mode_manager = TradeModeManager()
 
-        # Dynamic Activity Filter (Hybrid Mode)
+        # Dynamic Activity Filter (Hybrid Mode) - CONSERVATIVE
+        # Based on backtest: trades outside KZ have lower quality
+        # Only allow exceptional opportunities outside KZ
         self.activity_filter = DynamicActivityFilter(
-            min_atr_pips=5.0,
-            min_bar_range_pips=3.0,
+            min_atr_pips=6.0,           # Higher threshold (was 5.0)
+            min_bar_range_pips=4.0,     # Higher threshold (was 3.0)
             activity_threshold=40.0,
             pip_size=0.0001
         )
+        self.activity_filter.outside_kz_min_score = 80.0  # Conservative (was 70)
         self.hybrid_mode_enabled = True  # KZ + Dynamic Activity
 
         # Previous mode for change detection
@@ -353,9 +356,9 @@ class TradeExecutor:
                 else:
                     msg += f"├ Waiting for KZ or high activity\n"
 
-            # Waiting status
-            if not in_kz and (not activity or activity.level not in [ActivityLevel.HIGH, ActivityLevel.MODERATE]):
-                msg += "\n⏳ <i>Waiting for Kill Zone or market activity...</i>"
+            # Waiting status (Conservative: only HIGH activity outside KZ)
+            if not in_kz and (not activity or activity.level != ActivityLevel.HIGH or activity.score < 80):
+                msg += "\n⏳ <i>Waiting for Kill Zone or exceptional activity...</i>"
             elif bias == "SELL" and bear_pois == 0:
                 msg += "\n⏳ <i>Waiting for Bearish POI...</i>"
             elif bias == "BUY" and bull_pois == 0:

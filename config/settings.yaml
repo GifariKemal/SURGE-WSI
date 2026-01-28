@@ -48,28 +48,33 @@ killzone:
 # ============================================
 # Layer 3b: Dynamic Activity Filter (Hybrid)
 # ============================================
-# Trade during Kill Zones OR when market is active
+# Trade during Kill Zones OR when market is VERY active
+# CONSERVATIVE MODE: Only trade outside KZ when activity is exceptionally high
 dynamic_activity:
   enabled: true
   hybrid_mode: true           # true = KZ + Dynamic, false = Dynamic only
 
-  # Activity thresholds
+  # Activity thresholds (CONSERVATIVE)
   activity_threshold: 40.0    # Min score in Kill Zone (0-100)
-  outside_kz_threshold: 70.0  # Min score outside Kill Zone (higher)
+  outside_kz_threshold: 80.0  # Min score outside KZ (HIGH only, was 70)
 
-  # Volatility settings
-  min_atr_pips: 5.0           # Minimum ATR in pips
-  min_bar_range_pips: 3.0     # Minimum single bar range
+  # Volatility settings (CONSERVATIVE)
+  min_atr_pips: 6.0           # Minimum ATR in pips (was 5.0)
+  min_bar_range_pips: 4.0     # Minimum single bar range (was 3.0)
   volatility_lookback: 14     # Bars for ATR calculation
 
   # Spread settings (liquidity)
-  max_spread_pips: 3.0        # Maximum acceptable spread
+  max_spread_pips: 2.5        # Maximum acceptable spread (was 3.0)
   ideal_spread_pips: 1.5      # Ideal spread for full score
 
   # Time settings
   skip_weekends: true
   skip_friday_late: true      # Avoid Friday after 20:00 UTC
   boost_overlap_hours: true   # Bonus during London-NY overlap
+
+  # Conservative mode note:
+  # Based on backtest: trades outside KZ have lower win rate
+  # Only allow trading outside KZ for exceptional opportunities
 
 # ============================================
 # Layer 4: POI Detection (Order Blocks + FVG)
