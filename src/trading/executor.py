@@ -25,6 +25,7 @@ from .entry_trigger import EntryTrigger, LTFEntrySignal
 from .risk_manager import RiskManager
 from .exit_manager import ExitManager, PositionState
 from .trade_mode_manager import TradeModeManager, TradeMode, TradeModeConfig
+from ..utils.dynamic_activity_filter import DynamicActivityFilter, ActivityScore, ActivityLevel
 
 
 class ExecutorState(Enum):
@@ -120,6 +121,15 @@ class TradeExecutor:
         self.exit_manager = ExitManager()
         self.trade_mode_manager = TradeModeManager()
 
+        # Dynamic Activity Filter (Hybrid Mode)
+        self.activity_filter = DynamicActivityFilter(
+            min_atr_pips=5.0,
+            min_bar_range_pips=3.0,
+            activity_threshold=40.0,
+            pip_size=0.0001
+        )
+        self.hybrid_mode_enabled = True  # KZ + Dynamic Activity
+
         # Previous mode for change detection
         self._previous_mode: TradeMode = TradeMode.AUTO
 
@@ -137,6 +147,8 @@ class TradeExecutor:
         self._prev_bear_pois: int = 0
         self._prev_at_poi: bool = False
         self._last_status_time: Optional[datetime] = None
+        self._prev_activity_level: Optional[ActivityLevel] = None
+        self._last_activity: Optional[ActivityScore] = None
 
         # MT5/MCP callbacks
         self.get_account_info: Optional[Callable] = None
@@ -315,17 +327,35 @@ class TradeExecutor:
             regime = regime_info.regime.value if regime_info else "N/A"
             bias = regime_info.bias if regime_info else "N/A"
 
+            # Activity info
+            activity = self._last_activity
+            activity_emoji = activity.get_emoji() if activity else "⚪"
+            activity_score = f"{activity.score:.0f}" if activity else "N/A"
+            activity_level = activity.level.value.upper() if activity else "N/A"
+
             msg = f"📊 <b>Status Update</b>\n\n"
             msg += f"├ Price: {price:.5f}\n"
             msg += f"├ Session: {session}\n"
             msg += f"├ Kill Zone: {'Yes' if in_kz else 'No'}\n"
+            msg += f"├ Activity: {activity_emoji} {activity_level} ({activity_score}/100)\n"
             msg += f"├ Regime: {regime}\n"
             msg += f"├ Bias: {bias}\n"
             msg += f"├ Bullish POIs: {bull_pois}\n"
             msg += f"└ Bearish POIs: {bear_pois}\n"
 
-            if not in_kz:
-                msg += "\n⏳ <i>Waiting for Kill Zone...</i>"
+            # Hybrid mode status
+            if self.hybrid_mode_enabled:
+                msg += "\n🔄 <b>Hybrid Mode:</b> Active\n"
+                if in_kz:
+                    msg += f"├ In Kill Zone ({session})\n"
+                elif activity and activity.level == ActivityLevel.HIGH:
+                    msg += f"├ High activity outside KZ\n"
+                else:
+                    msg += f"├ Waiting for KZ or high activity\n"
+
+            # Waiting status
+            if not in_kz and (not activity or activity.level not in [ActivityLevel.HIGH, ActivityLevel.MODERATE]):
+                msg += "\n⏳ <i>Waiting for Kill Zone or market activity...</i>"
             elif bias == "SELL" and bear_pois == 0:
                 msg += "\n⏳ <i>Waiting for Bearish POI...</i>"
             elif bias == "BUY" and bull_pois == 0:
@@ -368,8 +398,54 @@ class TradeExecutor:
 
         # Check Kill Zone
         in_kz, session = self.is_in_killzone()
-        if not in_kz:
-            return None
+
+        # Get LTF data for activity check
+        ltf_data_for_activity = None
+        if self.get_ohlcv_ltf:
+            try:
+                ltf_data_for_activity = await self.get_ohlcv_ltf(self.symbol, self.timeframe_ltf, 50)
+            except Exception:
+                pass
+
+        # Hybrid Mode: Check activity filter
+        current_high = price  # Approximate from tick
+        current_low = price * 0.9999  # Approximate
+        if ltf_data_for_activity is not None and len(ltf_data_for_activity) > 0:
+            last_candle = ltf_data_for_activity.iloc[-1]
+            current_high = last_candle.get('high', last_candle.get('High', price))
+            current_low = last_candle.get('low', last_candle.get('Low', price))
+
+        if self.hybrid_mode_enabled:
+            # Use hybrid mode: KZ OR high activity
+            should_trade, activity_reason, activity = self.activity_filter.should_trade_hybrid(
+                dt=datetime.now(timezone.utc),
+                current_high=current_high,
+                current_low=current_low,
+                in_killzone=in_kz,
+                session_name=session,
+                recent_df=ltf_data_for_activity
+            )
+            self._last_activity = activity
+
+            # Notify on activity level change
+            if activity.level != self._prev_activity_level and self.send_telegram:
+                emoji = activity.get_emoji()
+                if not in_kz and activity.level == ActivityLevel.HIGH:
+                    asyncio.create_task(self.send_telegram(
+                        f"{emoji} <b>High Activity Outside KZ!</b>\n"
+                        f"├ Score: {activity.score:.0f}/100\n"
+                        f"├ ATR: {activity.atr_pips:.1f} pips\n"
+                        f"└ Trading enabled outside Kill Zone"
+                    ))
+                self._prev_activity_level = activity.level
+
+            if not should_trade:
+                logger.debug(f"Activity filter: {activity_reason}")
+                return None
+        else:
+            # Traditional mode: only Kill Zone
+            if not in_kz:
+                return None
 
         # Check cooldown
         if self.is_cooldown_active():
@@ -825,6 +901,16 @@ class TradeExecutor:
         in_kz, session = self.is_in_killzone()
         mode_status = self.trade_mode_manager.get_status()
 
+        # Activity info
+        activity_info = {}
+        if self._last_activity:
+            activity_info = {
+                'level': self._last_activity.level.value,
+                'score': self._last_activity.score,
+                'atr_pips': self._last_activity.atr_pips,
+                'is_active': self._last_activity.is_active
+            }
+
         return {
             'state': self.state.value,
             'warmup_complete': self.is_warmup_complete,
@@ -834,6 +920,8 @@ class TradeExecutor:
             'bias': regime.bias if regime else 'NONE',
             'in_killzone': in_kz,
             'session': session,
+            'hybrid_mode': self.hybrid_mode_enabled,
+            'activity': activity_info,
             'cooldown_active': self.is_cooldown_active(),
             'open_positions': self.risk_manager.open_positions,
             'daily_pnl': self.risk_manager.daily_pnl,
@@ -856,8 +944,11 @@ class TradeExecutor:
         self.poi_detector.reset()
         self.entry_trigger.reset()
         self.exit_manager.reset()
+        self.activity_filter.reset()
         self.trade_mode_manager = TradeModeManager()
         self._previous_mode = TradeMode.AUTO
+        self._prev_activity_level = None
+        self._last_activity = None
         self._warmup_count = 0
         self._last_signal_time = None
         self.state = ExecutorState.IDLE

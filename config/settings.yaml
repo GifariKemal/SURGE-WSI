@@ -46,6 +46,32 @@ killzone:
   london_close_end: 17
 
 # ============================================
+# Layer 3b: Dynamic Activity Filter (Hybrid)
+# ============================================
+# Trade during Kill Zones OR when market is active
+dynamic_activity:
+  enabled: true
+  hybrid_mode: true           # true = KZ + Dynamic, false = Dynamic only
+
+  # Activity thresholds
+  activity_threshold: 40.0    # Min score in Kill Zone (0-100)
+  outside_kz_threshold: 70.0  # Min score outside Kill Zone (higher)
+
+  # Volatility settings
+  min_atr_pips: 5.0           # Minimum ATR in pips
+  min_bar_range_pips: 3.0     # Minimum single bar range
+  volatility_lookback: 14     # Bars for ATR calculation
+
+  # Spread settings (liquidity)
+  max_spread_pips: 3.0        # Maximum acceptable spread
+  ideal_spread_pips: 1.5      # Ideal spread for full score
+
+  # Time settings
+  skip_weekends: true
+  skip_friday_late: true      # Avoid Friday after 20:00 UTC
+  boost_overlap_hours: true   # Bonus during London-NY overlap
+
+# ============================================
 # Layer 4: POI Detection (Order Blocks + FVG)
 # ============================================
 poi:
