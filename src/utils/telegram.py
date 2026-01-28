@@ -636,13 +636,11 @@ class TelegramFormatter:
         msg += "<code>/regime</code> - Market regime\n"
         msg += "<code>/pois</code> - Active POIs\n"
         msg += "<code>/mode</code> - Trading mode\n"
-        msg += "<code>/activity</code> - Market activity\n"
 
         msg += cls.tree_section("Control", cls.GEAR)
         msg += "<code>/pause</code> - Pause trading\n"
         msg += "<code>/resume</code> - Resume trading\n"
         msg += "<code>/close_all</code> - Close all positions\n"
-        msg += "<code>/hybrid</code> - Toggle hybrid mode\n"
 
         msg += cls.tree_section("Mode Override", cls.WARNING)
         msg += "<code>/force_auto</code> - Force AUTO mode\n"
@@ -816,8 +814,6 @@ class TelegramNotifier:
         self.on_test_buy: Optional[Callable] = None
         self.on_test_sell: Optional[Callable] = None
         self.on_autotrading: Optional[Callable] = None
-        self.on_activity: Optional[Callable] = None
-        self.on_hybrid: Optional[Callable] = None
 
     async def initialize(self) -> bool:
         """Initialize bot
@@ -865,8 +861,6 @@ class TelegramNotifier:
             self._app.add_handler(CommandHandler("test_buy", self._handle_test_buy))
             self._app.add_handler(CommandHandler("test_sell", self._handle_test_sell))
             self._app.add_handler(CommandHandler("autotrading", self._handle_autotrading))
-            self._app.add_handler(CommandHandler("activity", self._handle_activity))
-            self._app.add_handler(CommandHandler("hybrid", self._handle_hybrid))
             self._app.add_handler(CommandHandler("help", self._handle_help))
 
             await self._app.initialize()
@@ -1026,22 +1020,6 @@ class TelegramNotifier:
             await update.message.reply_text(result, parse_mode='HTML')
         else:
             await update.message.reply_text("AutoTrading check not available")
-
-    async def _handle_activity(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /activity command"""
-        if self.on_activity:
-            result = await self.on_activity()
-            await update.message.reply_text(result, parse_mode='HTML')
-        else:
-            await update.message.reply_text("Activity check not available")
-
-    async def _handle_hybrid(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /hybrid command"""
-        if self.on_hybrid:
-            result = await self.on_hybrid()
-            await update.message.reply_text(result, parse_mode='HTML')
-        else:
-            await update.message.reply_text("Hybrid mode toggle not available")
 
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""

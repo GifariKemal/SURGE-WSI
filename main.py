@@ -257,8 +257,6 @@ class SurgeWSI:
         self.telegram.on_test_buy = self._telegram_test_buy
         self.telegram.on_test_sell = self._telegram_test_sell
         self.telegram.on_autotrading = self._telegram_autotrading
-        self.telegram.on_activity = self._telegram_activity
-        self.telegram.on_hybrid = self._telegram_toggle_hybrid
 
     # MT5 callbacks
     async def _get_account_info(self):
@@ -309,7 +307,6 @@ class SurgeWSI:
         # Gather status info
         in_kz, session = self.executor.is_in_killzone()
         regime_info = self.executor.regime_detector.last_info
-        activity = self.executor._last_activity
         daily_stats = self.executor.risk_manager.get_daily_stats()
 
         # Build message
@@ -319,10 +316,6 @@ class SurgeWSI:
         msg += TF.item("Session", session if in_kz else "Outside KZ")
         msg += TF.item("Regime", regime_info.regime.value if regime_info else "N/A")
         msg += TF.item("Bias", regime_info.bias if regime_info else "N/A")
-
-        if activity:
-            msg += TF.item("Activity", f"{activity.level.value} ({activity.score:.0f})")
-
         msg += TF.spacer()
         msg += TF.item("Balance", f"${account.get('balance', 0):,.2f}")
         msg += TF.item("Equity", f"${account.get('equity', 0):,.2f}")
@@ -519,61 +512,6 @@ class SurgeWSI:
 
         return msg
 
-    async def _telegram_activity(self):
-        """Check market activity status"""
-        activity = self.executor._last_activity
-        in_kz, session = self.executor.is_in_killzone()
-
-        msg = TF.header("Market Activity", TF.CHART)
-        msg += TF.spacer()
-
-        if activity:
-            emoji = activity.get_emoji()
-            msg += f"{emoji} <b>Level:</b> {activity.level.value.upper()}\n"
-            msg += TF.item("Score", f"{activity.score:.0f}/100")
-            msg += TF.item("Volatility", f"{activity.volatility_score:.0f}/40")
-            msg += TF.item("Range", f"{activity.range_score:.0f}/30")
-            msg += TF.item("Time", f"{activity.time_score:.0f}/30")
-            msg += TF.item("ATR", f"{activity.atr_pips:.1f} pips")
-            msg += TF.item("Kill Zone", f"{'Yes' if in_kz else 'No'} ({session})", last=True)
-
-            msg += TF.spacer()
-            msg += f"<b>Hybrid Mode:</b> {'ON' if self.executor.hybrid_mode_enabled else 'OFF'}\n"
-
-            if self.executor.hybrid_mode_enabled:
-                if in_kz:
-                    msg += "Trading: ✅ In Kill Zone"
-                elif activity.level.value in ['high', 'moderate']:
-                    msg += "Trading: ✅ High Activity"
-                else:
-                    msg += "Trading: ❌ Waiting for KZ or activity"
-        else:
-            msg += "No activity data yet."
-
-        return msg
-
-    async def _telegram_toggle_hybrid(self):
-        """Toggle hybrid mode on/off"""
-        self.executor.hybrid_mode_enabled = not self.executor.hybrid_mode_enabled
-        status = "ON" if self.executor.hybrid_mode_enabled else "OFF"
-
-        msg = TF.header("Hybrid Mode", TF.GEAR)
-        msg += TF.spacer()
-        msg += TF.item("Status", status, last=True)
-
-        if self.executor.hybrid_mode_enabled:
-            msg += "\n\n<b>Hybrid Mode Active:</b>"
-            msg += "\n• Trade in Kill Zones (normal)"
-            msg += "\n• OR trade when market very active"
-            msg += "\n\nMore trading opportunities!"
-        else:
-            msg += "\n\n<b>Traditional Mode:</b>"
-            msg += "\n• Only trade in Kill Zones"
-            msg += "\n• London: 08:00-12:00 UTC"
-            msg += "\n• New York: 13:00-17:00 UTC"
-
-        return msg
-
     async def warmup(self):
         """Warmup with historical data"""
         logger.info("Starting warmup...")
@@ -657,15 +595,10 @@ class SurgeWSI:
                         regime_str = regime_info.regime.value if regime_info else 'N/A'
                         bias_str = regime_info.bias if regime_info else 'N/A'
 
-                        # Activity info
-                        activity = self.executor._last_activity
-                        activity_str = f"{activity.level.value}({activity.score:.0f})" if activity else "N/A"
-
                         logger.info(
                             f"[Loop {loop_count}] Price: {price:.5f} | "
                             f"State: {state} | Session: {session} | "
                             f"KZ: {'Yes' if in_kz else 'No'} | "
-                            f"Activity: {activity_str} | "
                             f"Regime: {regime_str} | Bias: {bias_str}"
                         )
 

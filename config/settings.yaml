@@ -48,24 +48,24 @@ killzone:
 # ============================================
 # Layer 3b: Dynamic Activity Filter (Hybrid)
 # ============================================
-# Trade during Kill Zones OR when market is VERY active
-# CONSERVATIVE MODE: Only trade outside KZ when activity is exceptionally high
-dynamic_activity:
+# Market Filter Settings (Trend + Relaxed Entry)
+# Backtest shows KZ-only performs better than Hybrid Mode
+# Hybrid Mode removed - added Trend Filter + Relaxed Entry instead
+market_filter:
   enabled: true
-  hybrid_mode: true           # true = KZ + Dynamic, false = Dynamic only
+  trend_threshold: 0.6        # 60% directional bars = trending
+  min_volatility_pips: 15.0   # Min ATR to trade
+  max_volatility_pips: 80.0   # Max ATR (too risky)
+  atr_period: 14              # Period for ATR calculation
+  lookback_bars: 20           # Bars to analyze for trend
 
-  # Activity thresholds (CONSERVATIVE)
-  activity_threshold: 40.0    # Min score in Kill Zone (0-100)
-  outside_kz_threshold: 80.0  # Min score outside KZ (HIGH only, was 70)
-
-  # Volatility settings (CONSERVATIVE)
-  min_atr_pips: 6.0           # Minimum ATR in pips (was 5.0)
-  min_bar_range_pips: 4.0     # Minimum single bar range (was 3.0)
-  volatility_lookback: 14     # Bars for ATR calculation
-
-  # Spread settings (liquidity)
-  max_spread_pips: 2.5        # Maximum acceptable spread (was 3.0)
-  ideal_spread_pips: 1.5      # Ideal spread for full score
+# Relaxed Entry Filter - relax filters in low-activity periods
+relaxed_entry:
+  enabled: true
+  min_quality_normal: 60.0    # Normal min quality score
+  min_quality_relaxed: 50.0   # Relaxed min quality (no recent trades)
+  require_full_confirmation_normal: true
+  require_full_confirmation_relaxed: false
 
   # Time settings
   skip_weekends: true

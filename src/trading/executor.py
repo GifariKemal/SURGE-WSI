@@ -25,7 +25,7 @@ from .entry_trigger import EntryTrigger, LTFEntrySignal
 from .risk_manager import RiskManager
 from .exit_manager import ExitManager, PositionState
 from .trade_mode_manager import TradeModeManager, TradeMode, TradeModeConfig
-from ..utils.dynamic_activity_filter import DynamicActivityFilter, ActivityScore, ActivityLevel
+from ..analysis.market_filter import MarketFilter, RelaxedEntryFilter
 
 
 class ExecutorState(Enum):
@@ -121,17 +121,26 @@ class TradeExecutor:
         self.exit_manager = ExitManager()
         self.trade_mode_manager = TradeModeManager()
 
-        # Dynamic Activity Filter (Hybrid Mode) - CONSERVATIVE
-        # Based on backtest: trades outside KZ have lower quality
-        # Only allow exceptional opportunities outside KZ
-        self.activity_filter = DynamicActivityFilter(
-            min_atr_pips=6.0,           # Higher threshold (was 5.0)
-            min_bar_range_pips=4.0,     # Higher threshold (was 3.0)
-            activity_threshold=40.0,
-            pip_size=0.0001
+        # Market Filter - Trend alignment and volatility check
+        # Added to match backtest system for better accuracy
+        self.market_filter = MarketFilter(
+            trend_threshold=0.6,        # 60% directional bars = trending
+            min_volatility_pips=15.0,   # Min ATR to trade
+            max_volatility_pips=80.0,   # Max ATR (too risky)
+            atr_period=14,
+            lookback_bars=20
         )
-        self.activity_filter.outside_kz_min_score = 80.0  # Conservative (was 70)
-        self.hybrid_mode_enabled = True  # KZ + Dynamic Activity
+
+        # Relaxed Entry Filter - Relax filters during low activity periods
+        self.relaxed_filter = RelaxedEntryFilter(
+            min_quality_normal=60.0,
+            min_quality_relaxed=50.0,
+            require_full_confirmation_normal=True,
+            require_full_confirmation_relaxed=False
+        )
+
+        # Track recent trades for relaxed filter
+        self._recent_trades: List[datetime] = []
 
         # Previous mode for change detection
         self._previous_mode: TradeMode = TradeMode.AUTO
@@ -150,8 +159,6 @@ class TradeExecutor:
         self._prev_bear_pois: int = 0
         self._prev_at_poi: bool = False
         self._last_status_time: Optional[datetime] = None
-        self._prev_activity_level: Optional[ActivityLevel] = None
-        self._last_activity: Optional[ActivityScore] = None
 
         # MT5/MCP callbacks
         self.get_account_info: Optional[Callable] = None
@@ -399,56 +406,10 @@ class TradeExecutor:
         if not can_trade:
             return None
 
-        # Check Kill Zone
+        # Check Kill Zone - Only trade during KZ (backtest shows best performance)
         in_kz, session = self.is_in_killzone()
-
-        # Get LTF data for activity check
-        ltf_data_for_activity = None
-        if self.get_ohlcv_ltf:
-            try:
-                ltf_data_for_activity = await self.get_ohlcv_ltf(self.symbol, self.timeframe_ltf, 50)
-            except Exception:
-                pass
-
-        # Hybrid Mode: Check activity filter
-        current_high = price  # Approximate from tick
-        current_low = price * 0.9999  # Approximate
-        if ltf_data_for_activity is not None and len(ltf_data_for_activity) > 0:
-            last_candle = ltf_data_for_activity.iloc[-1]
-            current_high = last_candle.get('high', last_candle.get('High', price))
-            current_low = last_candle.get('low', last_candle.get('Low', price))
-
-        if self.hybrid_mode_enabled:
-            # Use hybrid mode: KZ OR high activity
-            should_trade, activity_reason, activity = self.activity_filter.should_trade_hybrid(
-                dt=datetime.now(timezone.utc),
-                current_high=current_high,
-                current_low=current_low,
-                in_killzone=in_kz,
-                session_name=session,
-                recent_df=ltf_data_for_activity
-            )
-            self._last_activity = activity
-
-            # Notify on activity level change
-            if activity.level != self._prev_activity_level and self.send_telegram:
-                emoji = activity.get_emoji()
-                if not in_kz and activity.level == ActivityLevel.HIGH:
-                    asyncio.create_task(self.send_telegram(
-                        f"{emoji} <b>High Activity Outside KZ!</b>\n"
-                        f"├ Score: {activity.score:.0f}/100\n"
-                        f"├ ATR: {activity.atr_pips:.1f} pips\n"
-                        f"└ Trading enabled outside Kill Zone"
-                    ))
-                self._prev_activity_level = activity.level
-
-            if not should_trade:
-                logger.debug(f"Activity filter: {activity_reason}")
-                return None
-        else:
-            # Traditional mode: only Kill Zone
-            if not in_kz:
-                return None
+        if not in_kz:
+            return None
 
         # Check cooldown
         if self.is_cooldown_active():
@@ -463,7 +424,8 @@ class TradeExecutor:
         if direction == 'NONE':
             return None
 
-        # Get HTF data for POI
+        # Get HTF data for POI and trend filter
+        htf_data = None
         if self.get_ohlcv_htf:
             htf_data = await self.get_ohlcv_htf(self.symbol, self.timeframe_htf, 200)
             if htf_data is not None:
@@ -472,6 +434,14 @@ class TradeExecutor:
         else:
             logger.debug("No get_ohlcv_htf callback")
             return None
+
+        # Trend Filter - Check alignment with HTF trend
+        if htf_data is not None and len(htf_data) >= 20:
+            aligned, trend_reason = self.market_filter.check_trend_alignment(htf_data, direction)
+            if not aligned:
+                logger.debug(f"Trend filter: {trend_reason}")
+                self.stats.signals_filtered += 1
+                return None
 
         # Check if price at POI
         poi_result = self.poi_detector.last_result
@@ -510,14 +480,36 @@ class TradeExecutor:
             logger.debug("No get_ohlcv_ltf callback")
             return None
 
+        # Relaxed Entry Filter - Check if we should relax entry requirements
+        now = datetime.now(timezone.utc)
+        cutoff_time = now - timedelta(days=7)
+        recent_trade_count = sum(1 for t in self._recent_trades if t > cutoff_time)
+        min_quality, require_full_confirmation = self.relaxed_filter.get_entry_params(
+            recent_trade_count=recent_trade_count,
+            lookback_days=7
+        )
+
+        # Temporarily adjust entry trigger's min_quality_score
+        original_min_quality = self.entry_trigger.min_quality_score
+        self.entry_trigger.min_quality_score = min_quality
+
         # Check entry confirmation
         should_enter, signal = self.entry_trigger.check_for_entry(
-            ltf_data, direction, poi_info, price
+            ltf_data, direction, poi_info, price,
+            require_full_confirmation=require_full_confirmation
         )
+
+        # Restore original min_quality
+        self.entry_trigger.min_quality_score = original_min_quality
 
         if not should_enter or signal is None:
             logger.debug(f"Entry trigger not confirmed for {direction}")
             return None
+
+        # Track this trade time for relaxed filter
+        self._recent_trades.append(now)
+        # Clean up old trades from tracking
+        self._recent_trades = [t for t in self._recent_trades if t > cutoff_time]
 
         logger.info(f"Entry trigger confirmed! Signal: {signal.signal_type}")
 
