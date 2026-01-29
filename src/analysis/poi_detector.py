@@ -66,6 +66,7 @@ class OrderBlock:
     mitigated: bool = False
     created_at: datetime = None
     bar_index: int = 0
+    pip_size: float = 0.0001  # Default for forex, 0.1 for Gold
 
     @property
     def mid(self) -> float:
@@ -75,7 +76,7 @@ class OrderBlock:
     @property
     def size_pips(self) -> float:
         """Size in pips"""
-        return abs(self.top - self.bottom) / 0.0001
+        return abs(self.top - self.bottom) / self.pip_size
 
     @property
     def direction(self) -> str:
@@ -115,6 +116,7 @@ class FairValueGap:
     fill_percentage: float = 0.0
     created_at: datetime = None
     bar_index: int = 0
+    pip_size: float = 0.0001  # Default for forex, 0.1 for Gold
 
     @property
     def mid(self) -> float:
@@ -124,7 +126,7 @@ class FairValueGap:
     @property
     def size_pips(self) -> float:
         """Size in pips"""
-        return abs(self.high - self.low) / 0.0001
+        return abs(self.high - self.low) / self.pip_size
 
     @property
     def direction(self) -> str:
@@ -212,19 +214,20 @@ class POIResult:
         valid_pois.sort(key=lambda p: abs(p['mid'] - price))
         return valid_pois[0]
 
-    def price_at_poi(self, price: float, direction: str, tolerance_pips: float = 15.0) -> Tuple[bool, Optional[Dict]]:
+    def price_at_poi(self, price: float, direction: str, tolerance_pips: float = 15.0, pip_size: float = 0.0001) -> Tuple[bool, Optional[Dict]]:
         """Check if price is currently at a POI
 
         Args:
             price: Current price
             direction: 'BUY' or 'SELL'
             tolerance_pips: Buffer around POI in pips (default 15 pips)
+            pip_size: Pip size (0.0001 for forex, 0.1 for Gold)
 
         Returns:
             Tuple of (at_poi: bool, poi_info: Optional[Dict])
         """
         pois = self.bullish_pois if direction == "BUY" else self.bearish_pois
-        tolerance = tolerance_pips * 0.0001  # Convert pips to price
+        tolerance = tolerance_pips * pip_size  # Convert pips to price
 
         for poi in pois:
             low = poi.get('bottom', poi.get('low', 0))
@@ -267,7 +270,8 @@ class POIDetector:
         max_poi_age_bars: int = 50,  # Reduced from 100 for fresher POIs
         use_order_blocks: bool = True,
         use_fvg: bool = True,
-        use_bos: bool = True
+        use_bos: bool = True,
+        pip_size: float = 0.0001  # Default for forex, use 0.1 for Gold
     ):
         """Initialize POI Detector
 
@@ -279,6 +283,7 @@ class POIDetector:
             use_order_blocks: Enable order block detection
             use_fvg: Enable FVG detection
             use_bos: Enable break of structure detection
+            pip_size: Pip size for the symbol (0.0001 for forex, 0.1 for Gold)
         """
         self.swing_length = swing_length
         self.ob_min_strength = ob_min_strength
@@ -287,6 +292,7 @@ class POIDetector:
         self.use_order_blocks = use_order_blocks
         self.use_fvg = use_fvg
         self.use_bos = use_bos
+        self.pip_size = pip_size
 
         self._last_result: Optional[POIResult] = None
         self._poi_counter = 0
@@ -399,7 +405,7 @@ class POIDetector:
                     poi_type = POIType.ORDER_BLOCK_BEARISH
 
                 # Calculate strength based on volume and size
-                size_pips = abs(ob_top - ob_bottom) / 0.0001
+                size_pips = abs(ob_top - ob_bottom) / self.pip_size
                 strength = min(1.0, size_pips / 20)  # Normalize
 
                 # Validate values - must be valid price levels (not 0 or NaN)
@@ -417,7 +423,8 @@ class POIDetector:
                         strength=strength,
                         mitigated=mitigated,
                         bar_index=i,
-                        created_at=df.index[i] if hasattr(df.index[i], 'strftime') else None
+                        created_at=df.index[i] if hasattr(df.index[i], 'strftime') else None,
+                        pip_size=self.pip_size
                     ))
 
         except Exception as e:
@@ -455,7 +462,7 @@ class POIDetector:
                     continue
 
                 # Check size
-                size_pips = abs(fvg_top - fvg_bottom) / 0.0001
+                size_pips = abs(fvg_top - fvg_bottom) / self.pip_size
                 if size_pips < self.fvg_min_pips:
                     continue
 
@@ -474,7 +481,8 @@ class POIDetector:
                     low=fvg_bottom,
                     filled=filled,
                     bar_index=i,
-                    created_at=df.index[i] if hasattr(df.index[i], 'strftime') else None
+                    created_at=df.index[i] if hasattr(df.index[i], 'strftime') else None,
+                    pip_size=self.pip_size
                 ))
 
         except Exception as e:
@@ -610,7 +618,8 @@ class POIDetector:
                             bottom=lows[i-2],
                             strength=min(1.0, move_size / ob_body / 2),
                             mitigated=False,
-                            bar_index=i - 2
+                            bar_index=i - 2,
+                            pip_size=self.pip_size
                         ))
 
             # Bearish OB: Strong up candle followed by impulsive down move
@@ -629,7 +638,8 @@ class POIDetector:
                             bottom=opens[i-2],
                             strength=min(1.0, move_size / ob_body / 2),
                             mitigated=False,
-                            bar_index=i - 2
+                            bar_index=i - 2,
+                            pip_size=self.pip_size
                         ))
 
         # Simple FVG detection
@@ -645,26 +655,28 @@ class POIDetector:
 
             # Bullish FVG (gap up)
             if c2_low > c0_high:
-                gap_pips = (c2_low - c0_high) / 0.0001
+                gap_pips = (c2_low - c0_high) / self.pip_size
                 if gap_pips >= self.fvg_min_pips:
                     result.fvgs.append(FairValueGap(
                         id=self._generate_id(),
                         poi_type=POIType.FVG_BULLISH,
                         high=c2_low,
                         low=c0_high,
-                        bar_index=i - 1
+                        bar_index=i - 1,
+                        pip_size=self.pip_size
                     ))
 
             # Bearish FVG (gap down)
             if c2_high < c0_low:
-                gap_pips = (c0_low - c2_high) / 0.0001
+                gap_pips = (c0_low - c2_high) / self.pip_size
                 if gap_pips >= self.fvg_min_pips:
                     result.fvgs.append(FairValueGap(
                         id=self._generate_id(),
                         poi_type=POIType.FVG_BEARISH,
                         high=c0_low,
                         low=c2_high,
-                        bar_index=i - 1
+                        bar_index=i - 1,
+                        pip_size=self.pip_size
                     ))
 
         self._last_result = result
