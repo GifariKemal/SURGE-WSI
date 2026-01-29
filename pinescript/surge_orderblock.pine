@@ -417,15 +417,18 @@ if barstate.islast
     avg_bull_strength = 0.0
     avg_bear_strength = 0.0
 
-    for i = 0 to array.size(bull_ob_mitigated) - 1
-        if not array.get(bull_ob_mitigated, i)
-            active_bull_count += 1
-            avg_bull_strength += array.get(bull_ob_strengths, i)
+    // Check array size > 0 before looping to avoid out of bounds
+    if array.size(bull_ob_mitigated) > 0
+        for i = 0 to array.size(bull_ob_mitigated) - 1
+            if not array.get(bull_ob_mitigated, i)
+                active_bull_count += 1
+                avg_bull_strength += array.get(bull_ob_strengths, i)
 
-    for i = 0 to array.size(bear_ob_mitigated) - 1
-        if not array.get(bear_ob_mitigated, i)
-            active_bear_count += 1
-            avg_bear_strength += array.get(bear_ob_strengths, i)
+    if array.size(bear_ob_mitigated) > 0
+        for i = 0 to array.size(bear_ob_mitigated) - 1
+            if not array.get(bear_ob_mitigated, i)
+                active_bear_count += 1
+                avg_bear_strength += array.get(bear_ob_strengths, i)
 
     if active_bull_count > 0
         avg_bull_strength := avg_bull_strength / active_bull_count

@@ -372,13 +372,16 @@ if barstate.islast
     active_bull_count = 0
     active_bear_count = 0
 
-    for i = 0 to array.size(bull_fvg_filled) - 1
-        if not array.get(bull_fvg_filled, i)
-            active_bull_count += 1
+    // Check array size > 0 before looping to avoid out of bounds
+    if array.size(bull_fvg_filled) > 0
+        for i = 0 to array.size(bull_fvg_filled) - 1
+            if not array.get(bull_fvg_filled, i)
+                active_bull_count += 1
 
-    for i = 0 to array.size(bear_fvg_filled) - 1
-        if not array.get(bear_fvg_filled, i)
-            active_bear_count += 1
+    if array.size(bear_fvg_filled) > 0
+        for i = 0 to array.size(bear_fvg_filled) - 1
+            if not array.get(bear_fvg_filled, i)
+                active_bear_count += 1
 
     table.cell(info_table, 0, 0, "SURGE FVG v2", text_color=color.white, text_size=size.small)
     table.cell(info_table, 1, 0, "", text_color=color.white, text_size=size.small)
