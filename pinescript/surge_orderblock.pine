@@ -1,19 +1,13 @@
+//@version=6
+indicator("SURGE-WSI Order Block v2", shorttitle="SURGE-OB2", overlay=true, max_boxes_count=500, max_labels_count=500)
+
 // ============================================================================
 // SURGE-WSI Order Block Detector v2
 // ============================================================================
-//
 // Pine Script v6 - untuk TradingView
-//
-// UPDATED: Match dengan poi_detector.py logic
-// - Swing High/Low based detection (seperti smartmoneyconcepts)
-// - Multiple OB detection patterns
-// - Strength filter
-//
+// Match dengan poi_detector.py logic
 // Author: SURIOTA Team
 // ============================================================================
-
-//@version=6
-indicator("SURGE-WSI Order Block v2", shorttitle="SURGE OB v2", overlay=true, max_boxes_count=500, max_labels_count=500)
 
 // ============================================================================
 // INPUT SETTINGS

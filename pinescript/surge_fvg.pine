@@ -1,19 +1,12 @@
+//@version=6
+indicator("SURGE-WSI FVG v2", shorttitle="SURGE-FVG", overlay=true, max_boxes_count=500, max_labels_count=500)
+
 // ============================================================================
 // SURGE-WSI Fair Value Gap (FVG) Detector v2
 // ============================================================================
-//
-// Pine Script v6 - untuk TradingView
-//
-// UPDATED: Match dengan poi_detector.py logic
-// - Same detection as Python _fallback_detection()
-// - Same fill threshold (50%)
-// - Same parameters (fvg_min_pips=2.0, max_age=50)
-//
+// Pine Script v6 - Match dengan poi_detector.py logic
 // Author: SURIOTA Team
 // ============================================================================
-
-//@version=6
-indicator("SURGE-WSI FVG v2", shorttitle="SURGE FVG v2", overlay=true, max_boxes_count=500, max_labels_count=500)
 
 // ============================================================================
 // INPUT SETTINGS (sama dengan Python poi_detector.py)
