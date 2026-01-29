@@ -633,6 +633,7 @@ class TelegramFormatter:
         msg += "<code>/status</code> - System status\n"
         msg += "<code>/balance</code> - Account balance\n"
         msg += "<code>/positions</code> - Open positions\n"
+        msg += "<code>/market</code> - Full market analysis\n"
         msg += "<code>/regime</code> - Market regime\n"
         msg += "<code>/pois</code> - Active POIs\n"
         msg += "<code>/activity</code> - Market activity (INTEL_60)\n"
@@ -812,6 +813,7 @@ class TelegramNotifier:
         self.on_regime: Optional[Callable] = None
         self.on_pois: Optional[Callable] = None
         self.on_activity: Optional[Callable] = None  # Intelligent Activity Filter status
+        self.on_market: Optional[Callable] = None  # Comprehensive market analysis
         self.on_mode: Optional[Callable] = None
         self.on_pause: Optional[Callable] = None
         self.on_resume: Optional[Callable] = None
@@ -860,6 +862,7 @@ class TelegramNotifier:
             self._app.add_handler(CommandHandler("regime", self._handle_regime))
             self._app.add_handler(CommandHandler("pois", self._handle_pois))
             self._app.add_handler(CommandHandler("activity", self._handle_activity))
+            self._app.add_handler(CommandHandler("market", self._handle_market))
             self._app.add_handler(CommandHandler("mode", self._handle_mode))
             self._app.add_handler(CommandHandler("pause", self._handle_pause))
             self._app.add_handler(CommandHandler("resume", self._handle_resume))
@@ -986,6 +989,20 @@ class TelegramNotifier:
                 await update.message.reply_text("Activity filter status not available")
         except Exception as e:
             logger.error(f"Error handling /activity: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_market(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /market command - Comprehensive market analysis"""
+        try:
+            if self.on_market:
+                # Send "analyzing" message first
+                await update.message.reply_text("🔍 <i>Analyzing market conditions...</i>", parse_mode='HTML')
+                market = await self.on_market()
+                await update.message.reply_text(market, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Market analysis not available")
+        except Exception as e:
+            logger.error(f"Error handling /market: {e}")
             await update.message.reply_text(f"Error: {e}")
 
     async def _handle_mode(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

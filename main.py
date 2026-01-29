@@ -260,6 +260,7 @@ class SurgeWSI:
         self.telegram.on_regime = self._telegram_regime
         self.telegram.on_pois = self._telegram_pois
         self.telegram.on_activity = self._telegram_activity
+        self.telegram.on_market = self._telegram_market
         self.telegram.on_pause = self._telegram_pause
         self.telegram.on_resume = self._telegram_resume
         self.telegram.on_close_all = self._telegram_close_all
@@ -446,6 +447,121 @@ class SurgeWSI:
             msg += f"\n\n⏳ <i>Reason: {intel_result.reason}</i>"
 
         return msg
+
+    async def _telegram_market(self):
+        """Get comprehensive market analysis"""
+        try:
+            symbol = self.symbol
+
+            # Get current price
+            tick = self.mt5.get_tick_sync(symbol)
+            current_price = tick.get('bid', 0) if tick else 0
+
+            # Get INTEL_60 status
+            intel_result = self.executor._last_intelligent_result
+            use_intel = self.executor.use_intelligent_filter
+
+            # Get regime
+            regime_result = self.executor.regime_detector.last_result if self.executor.regime_detector else None
+
+            # Get POIs
+            poi_result = self.executor.poi_detector.last_result if self.executor.poi_detector else None
+
+            # Build message
+            msg = TF.header(f"Market Analysis - {symbol}", "📊")
+            msg += TF.spacer()
+
+            # Current price
+            msg += TF.item("Price", f"{current_price:.5f}")
+            msg += TF.item("Time", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"))
+            msg += TF.spacer()
+
+            # INTEL_60 section
+            msg += f"<b>🧠 INTEL_60:</b>\n"
+            if use_intel and intel_result:
+                emoji = intel_result.get_emoji()
+                msg += TF.item("Activity", f"{emoji} {intel_result.activity.value.upper()} ({intel_result.score:.0f}/100)")
+                msg += TF.item("Should Trade", "YES ✅" if intel_result.should_trade else "NO ⏸️")
+                msg += TF.item("Velocity", f"{intel_result.velocity:.2f} pips/bar")
+                msg += TF.item("ATR", f"{intel_result.atr_pips:.1f} pips")
+            else:
+                msg += "  <i>Disabled or not available</i>\n"
+            msg += TF.spacer()
+
+            # Regime section
+            msg += f"<b>📈 Regime:</b>\n"
+            if regime_result:
+                regime_emoji = "🟢" if regime_result.regime == "BULLISH" else ("🔴" if regime_result.regime == "BEARISH" else "⚪")
+                msg += TF.item("State", f"{regime_emoji} {regime_result.regime}")
+                msg += TF.item("Bias", regime_result.trade_bias)
+                msg += TF.item("Probability", f"{regime_result.probability:.0%}")
+                msg += TF.item("Tradeable", "YES ✅" if regime_result.is_tradeable else "NO ❌")
+            else:
+                msg += "  <i>Not available</i>\n"
+            msg += TF.spacer()
+
+            # POI section
+            msg += f"<b>🎯 Points of Interest:</b>\n"
+            if poi_result:
+                bullish_pois = poi_result.bullish_pois
+                bearish_pois = poi_result.bearish_pois
+                msg += TF.item("Bullish POIs", str(len(bullish_pois)))
+                msg += TF.item("Bearish POIs", str(len(bearish_pois)))
+
+                # Check if price at POI
+                direction = regime_result.trade_bias if regime_result else "BUY"
+                at_poi, poi_info = poi_result.price_at_poi(current_price, direction)
+                msg += TF.item("Price at POI", "YES ✅" if at_poi else "NO ❌")
+
+                # Show nearest POI if not at POI
+                if not at_poi:
+                    nearest = poi_result.get_nearest_poi(current_price, direction)
+                    if nearest:
+                        poi_mid = nearest.get('mid', 0)
+                        distance = abs(current_price - poi_mid) / 0.0001
+                        msg += TF.item("Nearest POI", f"{poi_mid:.5f} ({distance:.1f} pips)")
+            else:
+                msg += "  <i>Not available</i>\n"
+            msg += TF.spacer()
+
+            # Trading recommendation
+            msg += f"<b>💡 Recommendation:</b>\n"
+            can_trade = True
+            reasons = []
+
+            if use_intel and intel_result and not intel_result.should_trade:
+                can_trade = False
+                reasons.append("Market not active (INTEL_60)")
+
+            if regime_result and not regime_result.is_tradeable:
+                can_trade = False
+                reasons.append("Regime not tradeable")
+
+            if poi_result:
+                direction = regime_result.trade_bias if regime_result else "BUY"
+                at_poi, _ = poi_result.price_at_poi(current_price, direction)
+                if not at_poi:
+                    reasons.append("Price not at POI zone")
+
+            if can_trade and not reasons:
+                msg += f"  ✅ <b>TRADING POSSIBLE</b>\n"
+                if regime_result:
+                    msg += f"  Direction: <b>{regime_result.trade_bias}</b>\n"
+            elif can_trade and reasons:
+                msg += f"  ⏳ <b>WAIT FOR ENTRY</b>\n"
+                msg += f"  Direction: <b>{regime_result.trade_bias if regime_result else 'N/A'}</b>\n"
+                for r in reasons:
+                    msg += f"  • {r}\n"
+            else:
+                msg += f"  ❌ <b>NO TRADE</b>\n"
+                for r in reasons:
+                    msg += f"  • {r}\n"
+
+            return msg
+
+        except Exception as e:
+            logger.error(f"Error in _telegram_market: {e}")
+            return f"Error getting market analysis: {e}"
 
     async def _telegram_pause(self):
         self.executor.pause()
