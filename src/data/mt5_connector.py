@@ -156,6 +156,26 @@ class MT5Connector:
             self.connected = False
             return self.connect()
 
+    def is_connected(self) -> bool:
+        """Check if MT5 is currently connected (without auto-reconnect)
+
+        Returns:
+            True if connected and terminal is responsive
+        """
+        if not self.connected:
+            return False
+
+        if self.use_mcp:
+            return True
+
+        # Verify connection is still alive
+        try:
+            info = mt5.terminal_info()
+            return info is not None
+        except:
+            self.connected = False
+            return False
+
     def is_autotrading_enabled(self) -> bool:
         """Check if AutoTrading is enabled in MT5 terminal
 
@@ -890,6 +910,66 @@ class MT5Connector:
             "time": datetime.fromtimestamp(deal.time),
             "magic": deal.magic,
             "comment": deal.comment,
+        }
+
+    def get_deal_history(self, position_ticket: int) -> Optional[Dict[str, Any]]:
+        """Get deal history for a specific position (to determine close reason)
+
+        Args:
+            position_ticket: Position ticket number
+
+        Returns:
+            Dict with close information or None if not found
+        """
+        if not self.ensure_connected():
+            return None
+
+        # Get deals for the last 7 days
+        from_date = datetime.now() - timedelta(days=7)
+        to_date = datetime.now() + timedelta(days=1)
+
+        deals = mt5.history_deals_get(from_date, to_date)
+
+        if deals is None:
+            return None
+
+        # Find the closing deal for this position
+        close_deal = None
+        entry_deal = None
+
+        for deal in deals:
+            if deal.position_id == position_ticket:
+                # entry=0 is entry, entry=1 is exit/close
+                if deal.entry == 0:
+                    entry_deal = deal
+                elif deal.entry == 1:
+                    close_deal = deal
+
+        if close_deal is None:
+            return None
+
+        # Determine close reason based on comment and price
+        close_reason = "UNKNOWN"
+        if close_deal.comment:
+            comment = close_deal.comment.lower()
+            if 'tp' in comment or 'take profit' in comment:
+                close_reason = "TP"
+            elif 'sl' in comment or 'stop loss' in comment:
+                close_reason = "SL"
+            elif 'close' in comment:
+                close_reason = "MANUAL"
+
+        return {
+            "position_ticket": position_ticket,
+            "close_deal_ticket": close_deal.ticket,
+            "close_price": close_deal.price,
+            "profit": close_deal.profit,
+            "swap": close_deal.swap,
+            "commission": close_deal.commission,
+            "close_time": datetime.fromtimestamp(close_deal.time),
+            "close_reason": close_reason,
+            "entry_price": entry_deal.price if entry_deal else 0,
+            "volume": close_deal.volume,
         }
 
     def get_session_info(self, symbol: str = "GBPUSD") -> Dict[str, Any]:

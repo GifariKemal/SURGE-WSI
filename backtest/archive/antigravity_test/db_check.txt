@@ -1,0 +1,4 @@
+  File "<string>", line 25
+    print(f'Columns in {t[\
+                         ^
+SyntaxError: '[' was never closed

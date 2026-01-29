@@ -1,0 +1,13 @@
+VAF BACKTEST & COMPARISON REPORT
+==================================================
+
+Period: Jan 2025 - Jan 2026
+
+RESULTS:
+Kill Zone:   93 trades, $3,217
+VAF Default: 188 trades, $5,176
+VAF Tuned:   188 trades, $5,176
+
+WINNER: VAF Default
+
+Best VAF Params: {'atr_period': 10, 'atr_multiplier': 0.3, 'min_atr_pips': 3.0, 'min_score': 35.0}

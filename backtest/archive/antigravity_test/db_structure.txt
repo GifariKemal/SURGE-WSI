@@ -1,0 +1,48 @@
+Connecting to database...
+Tables: ['trades', 'signals', 'regimes', 'kalman_states', 'pois', 'sync_log', 'ohlcv_daily', 'ohlcv']
+
+Columns in ohlcv_daily:
+  - bucket: timestamp with time zone
+  - symbol: character varying
+  - timeframe: character varying
+  - open: double precision
+  - high: double precision
+  - low: double precision
+  - close: double precision
+  - volume: numeric
+  - bar_count: bigint
+
+Sample row:
+  bucket: 2026-01-23 00:00:00+00:00
+  symbol: GBPUSD
+  timeframe: D1
+  open: 1.3503
+  high: 1.3645
+  low: 1.34818
+  close: 1.36409
+  volume: 105617
+  bar_count: 1
+
+Columns in ohlcv:
+  - time: timestamp with time zone
+  - symbol: character varying
+  - timeframe: character varying
+  - open: double precision
+  - high: double precision
+  - low: double precision
+  - close: double precision
+  - volume: bigint
+  - spread: double precision
+
+Sample row:
+  time: 2025-02-10 00:00:00+00:00
+  symbol: GBPUSD
+  timeframe: D1
+  open: 1.23772
+  high: 1.24216
+  low: 1.23624
+  close: 1.23629
+  volume: 70084
+  spread: 0.0
+
+Done!

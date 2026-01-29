@@ -1,0 +1,120 @@
+
+======================================================================
+SURGE-WSI DETAILED INVESTIGATION
+Why no trades on January 26-28, 2026?
+======================================================================
+
+Fetching data...
+  Warmup Start: 2025-11-27
+  Backtest Start: 2026-01-26
+  Backtest End: 2026-01-28
+
+Loaded H4: 252 bars, M15: 3834 bars
+
+======================================================================
+DETAILED INVESTIGATION: Why No Trades?
+Period: 2026-01-26 to 2026-01-28
+======================================================================
+
+Data available in backtest period:
+  HTF (H4) bars: 12
+  LTF (M15) bars: 154
+
+======================================================================
+LAYER 1: KILL ZONE CHECK
+======================================================================
+
+Kill Zone Distribution (M15 bars):
+  London Session:   46 bars
+  New York Session: 0 bars
+  Overlap:          0 bars
+  Outside KZ:       92 bars
+
+  Total in Kill Zones: 46 bars
+
+  First KZ bar: 2026-01-26 08:30:00+00:00 (London)
+  Last KZ bar:  2026-01-27 16:45:00+00:00 (London Close)
+
+======================================================================
+LAYER 2: REGIME DETECTION (HMM)
+======================================================================
+  Warmed up with 240 HTF bars
+
+Regime Analysis for 12 HTF bars:
+
+  Regime Distribution:
+    BULLISH:  0 bars
+    BEARISH:  0 bars
+    SIDEWAYS: 12 bars
+    Tradeable: 0 bars
+
+  Individual Bar Regimes:
+    2026-01-26 00:00:00+00:00 | Close: 1.36605 | Regime: SIDEWAYS | Conf: 88.54% | Trade: False
+    2026-01-26 04:00:00+00:00 | Close: 1.36662 | Regime: SIDEWAYS | Conf: 88.54% | Trade: False
+    2026-01-26 08:00:00+00:00 | Close: 1.36714 | Regime: SIDEWAYS | Conf: 88.54% | Trade: False
+    2026-01-26 12:00:00+00:00 | Close: 1.36609 | Regime: SIDEWAYS | Conf: 88.54% | Trade: False
+    2026-01-26 16:00:00+00:00 | Close: 1.36876 | Regime: SIDEWAYS | Conf: 88.54% | Trade: False
+    2026-01-26 20:00:00+00:00 | Close: 1.36787 | Regime: SIDEWAYS | Conf: 88.54% | Trade: False
+    2026-01-27 00:00:00+00:00 | Close: 1.36791 | Regime: SIDEWAYS | Conf: 88.54% | Trade: False
+    2026-01-27 04:00:00+00:00 | Close: 1.36779 | Regime: SIDEWAYS | Conf: 88.54% | Trade: False
+    2026-01-27 08:00:00+00:00 | Close: 1.36985 | Regime: SIDEWAYS | Conf: 88.54% | Trade: False
+    2026-01-27 12:00:00+00:00 | Close: 1.37346 | Regime: SIDEWAYS | Conf: 88.54% | Trade: False
+    2026-01-27 16:00:00+00:00 | Close: 1.37869 | Regime: SIDEWAYS | Conf: 88.54% | Trade: False
+    2026-01-27 20:00:00+00:00 | Close: 1.37825 | Regime: SIDEWAYS | Conf: 88.54% | Trade: False
+
+======================================================================
+LAYER 3: POI DETECTION (Order Blocks & FVG)
+======================================================================
+
+  Total Order Blocks: 1
+  Total FVGs: 8
+
+  Recent Order Blocks:
+    Type: N/A | Top: 1.34521 | Bottom: 1.34009 | Strength: 1.00
+
+  Recent FVGs:
+    Type: N/A | High: 1.35136 | Low: 1.35000
+    Type: N/A | High: 1.35913 | Low: 1.35361
+    Type: N/A | High: 1.36428 | Low: 1.36223
+    Type: N/A | High: 1.37308 | Low: 1.36995
+    Type: N/A | High: 1.37739 | Low: 1.37480
+
+  Current price: 1.38445
+  Active Bullish POIs: 5
+  Active Bearish POIs: 0
+  Price at Bullish POI: False
+  Price at Bearish POI: False
+
+======================================================================
+LAYER 4: ENTRY TRIGGER (Rejection Candles)
+======================================================================
+
+  Rejection candles found in Kill Zones: 14
+
+  Sample rejection candles:
+    2026-01-26 09:00:00+00:00 | BEARISH_REJECTION | Wick: 54.41% | London
+    2026-01-26 10:15:00+00:00 | BULLISH_REJECTION | Wick: 80.68% | London
+    2026-01-26 10:45:00+00:00 | BEARISH_REJECTION | Wick: 50.94% | London
+    2026-01-26 11:00:00+00:00 | BEARISH_REJECTION | Wick: 82.24% | London
+    2026-01-26 11:45:00+00:00 | BULLISH_REJECTION | Wick: 52.34% | London
+    2026-01-26 14:45:00+00:00 | BULLISH_REJECTION | Wick: 72.88% | New York
+    2026-01-27 09:15:00+00:00 | BEARISH_REJECTION | Wick: 70.69% | London
+    2026-01-27 10:15:00+00:00 | BEARISH_REJECTION | Wick: 62.24% | London
+    2026-01-27 11:30:00+00:00 | BEARISH_REJECTION | Wick: 53.06% | London
+    2026-01-27 13:15:00+00:00 | BULLISH_REJECTION | Wick: 81.03% | New York
+    2026-01-27 14:30:00+00:00 | BULLISH_REJECTION | Wick: 70.00% | New York
+    2026-01-27 15:00:00+00:00 | BEARISH_REJECTION | Wick: 59.20% | London Close
+    2026-01-27 15:45:00+00:00 | BULLISH_REJECTION | Wick: 52.41% | London Close
+    2026-01-27 16:00:00+00:00 | BEARISH_REJECTION | Wick: 68.80% | London Close
+
+======================================================================
+INVESTIGATION SUMMARY
+======================================================================
+
+Potential reasons for no trades:
+  - NO bars with tradeable regime (need BULLISH or BEARISH with high confidence)
+  - Market primarily in SIDEWAYS regime (no clear trend)
+
+======================================================================
+
+Results saved to: C:\Users\Administrator\Music\SURGE-WSI\backtest\results\debug_jan26_28_detailed.txt

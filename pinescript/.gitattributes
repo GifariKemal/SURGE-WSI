@@ -1,2 +1,0 @@
-# Force LF line endings for Pine Script files (TradingView requirement)
-*.pine text eol=lf

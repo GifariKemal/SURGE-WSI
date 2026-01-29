@@ -1,0 +1,53 @@
+
+======================================================================
+SURGE-WSI DEBUG BACKTEST
+Checking for trades: January 26-28, 2026
+======================================================================
+
+Fetching data...
+  Warmup Start: 2025-12-27
+  Backtest Start: 2026-01-26
+  Backtest End: 2026-01-28
+
+Loaded H4: 126 bars, M15: 1902 bars
+
+======================================================================
+SURGE-WSI DEBUG BACKTEST
+Period: 2026-01-26 to 2026-01-28
+======================================================================
+
+HTF (H4) bars: 126
+LTF (M15) bars: 1902
+
+HTF Data Range:
+  First: 2025-12-29 00:00:00+00:00
+  Last:  2026-01-27 20:00:00+00:00
+
+LTF Data Range:
+  First: 2025-12-29 01:00:00+00:00
+  Last:  2026-01-27 23:45:00+00:00
+
+======================================================================
+BACKTEST RESULTS
+======================================================================
+
+Final Balance:  $10,000.00
+Net Profit:     $0.00 (+0.00%)
+Total Trades:   0
+Win Rate:       0.0%
+Profit Factor:  0.00
+Max Drawdown:   0.00%
+
+[WARNING] NO TRADES EXECUTED during this period
+
+Possible reasons:
+  1. Market was outside Kill Zone hours
+  2. Regime was SIDEWAYS (no clear trend)
+  3. No valid POI (Order Block/FVG) detected
+  4. No rejection candle triggered entry
+
+======================================================================
+DEBUG BACKTEST COMPLETE
+======================================================================
+
+Results saved to: C:\Users\Administrator\Music\SURGE-WSI\backtest\results\debug_jan26_28_output.txt

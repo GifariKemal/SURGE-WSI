@@ -1,0 +1,68 @@
+🦅 *SURGE-WSI BACKTEST COMPARISON*
+*Period: Jan 2025 - Jan 2026 (13 Months)*
+
+⚔️ *KILL ZONE vs DYNAMIC FILTER*
+===================================
+
+📊 *PERFORMANCE SUMMARY*
+```
+Metric                   KillZone      Dynamic
+--------------------------------------------
+Total Trades                  104          196
+Total Profit                $5200        $4541
+Return %                   +52.0%       +45.4%
+Win Rate                    54.8%        53.1%
+Avg PF                       6.73         3.92
+Max DD                      19.5%        12.6%
+```
+
+🏆 *WINNER: Kill Zone* ✅
+Score: KillZone 4 vs Dynamic 1
+
+📊 *MONTHLY P/L (Kill Zone)*
+```
+Jan 2025: +$684 (7 trades)
+Feb 2025: -$79 (8 trades)
+Mar 2025: +$144 (10 trades)
+Apr 2025: +$1046 (9 trades)
+May 2025: -$494 (4 trades)
+Jun 2025: +$262 (9 trades)
+Jul 2025: +$2189 (5 trades)
+Aug 2025: +$341 (12 trades)
+Sep 2025: +$1706 (10 trades)
+Oct 2025: +$1333 (7 trades)
+Nov 2025: +$88 (3 trades)
+Dec 2025: -$2064 (8 trades)
+Jan 2026: +$46 (12 trades)
+```
+
+🚀 *MONTHLY P/L (Dynamic)*
+```
+Jan 2025: +$1371 (12 trades)
+Feb 2025: -$245 (24 trades)
+Mar 2025: +$598 (13 trades)
+Apr 2025: +$1406 (8 trades)
+May 2025: -$354 (11 trades)
+Jun 2025: +$124 (14 trades)
+Jul 2025: +$812 (15 trades)
+Aug 2025: -$16 (33 trades)
+Sep 2025: +$1056 (24 trades)
+Oct 2025: +$1347 (8 trades)
+Nov 2025: -$29 (13 trades)
+Dec 2025: -$1928 (8 trades)
+Jan 2026: +$399 (13 trades)
+```
+
+🎯 *TRADE FREQUENCY*
+```
+KillZone:  8.0 trades/month
+Dynamic:   15.1 trades/month
+Diff:      +7.1 trades/month
+```
+
+💰 *CONCLUSION*
+Kill Zone remains the better choice!
+- Fixed sessions provide consistency
+- Lower risk from off-peak trading
+
+_Generated: 2026-01-28 08:25_

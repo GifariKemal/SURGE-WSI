@@ -1,0 +1,71 @@
+
+======================================================================
+KILL ZONE COMPARISON TEST
+Testing: January 26-28, 2026
+======================================================================
+
+Fetching data...
+Loaded H4: 253 bars, M15: 3843 bars
+
+======================================================================
+TEST 1: WITH Kill Zone Filter (Default)
+======================================================================
+
+Results WITH Kill Zone:
+  Total Trades:   0
+  Net Profit:     $0.00
+  Win Rate:       0.0%
+
+  Debug Stats:
+    Entry checks:      62
+    Regime failures:   0
+    Regime sideways:   0
+    POI none:          0
+    No POIs:           0
+    Not in POI:        62
+    In POI:            0
+    Entry OK:          0
+
+======================================================================
+TEST 2: WITHOUT Kill Zone Filter
+======================================================================
+
+Results WITHOUT Kill Zone:
+  Total Trades:   0
+  Net Profit:     $0.00
+  Win Rate:       0.0%
+
+  Debug Stats:
+    Entry checks:      154
+    Regime failures:   0
+    Regime sideways:   0
+    POI none:          0
+    No POIs:           0
+    Not in POI:        154
+    In POI:            0
+    Entry OK:          0
+
+======================================================================
+COMPARISON SUMMARY
+======================================================================
+
+Metric                            WITH KZ      WITHOUT KZ
+-------------------------------------------------------
+Entry Checks                           62             154
+Regime Failures                         0               0
+Regime Sideways                         0               0
+Total Trades                            0               0
+Net Profit                          $0.00           $0.00
+
+======================================================================
+ANALYSIS
+======================================================================
+
+Without Kill Zone:
+  - 92 MORE entry checks performed
+
+  Same number of trades with or without Kill Zone.
+  This confirms the REGIME filter is the main gatekeeper.
+
+======================================================================
+Results saved to: C:\Users\Administrator\Music\SURGE-WSI\backtest\results\test_no_killzone.txt
