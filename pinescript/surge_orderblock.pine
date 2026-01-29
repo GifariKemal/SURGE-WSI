@@ -1,5 +1,5 @@
 //@version=6
-indicator("SURGE-WSI Order Block v2", shorttitle="SURGE-OB2", overlay=true, max_boxes_count=500, max_labels_count=500)
+indicator("SURGE Order Block v2", shorttitle="S-OB", overlay=true, max_boxes_count=500, max_labels_count=500)
 
 // ============================================================================
 // SURGE-WSI Order Block Detector v2
@@ -21,13 +21,32 @@ show_mitigated = input.bool(true, "Show Mitigated OB", group=grp_ob, tooltip="Sh
 extend_ob = input.bool(true, "Extend OB to Current Bar", group=grp_ob, tooltip="Extend OB box to current bar")
 show_swing = input.bool(false, "Show Swing Points", group=grp_ob, tooltip="Show swing high/low markers")
 
+// ============================================================================
+// STYLE SETTINGS - Shadcn/UI Inspired Theme
+// ============================================================================
 grp_style = "Style Settings"
-bull_ob_color = input.color(color.new(color.green, 80), "Bullish OB Color", group=grp_style)
-bear_ob_color = input.color(color.new(color.red, 80), "Bearish OB Color", group=grp_style)
-bull_border_color = input.color(color.green, "Bullish Border", group=grp_style)
-bear_border_color = input.color(color.red, "Bearish Border", group=grp_style)
-mitigated_color = input.color(color.new(color.gray, 85), "Mitigated OB Color", group=grp_style)
+
+// Shadcn-style color palette (muted, sophisticated)
+// Emerald for bullish (hsl 142 76% 36%)
+// Rose for bearish (hsl 346 77% 50%)
+BULL_PRIMARY = color.rgb(16, 185, 129)      // Emerald-500 #10b981
+BULL_MUTED = color.rgb(5, 150, 105)         // Emerald-600 #059669
+BEAR_PRIMARY = color.rgb(244, 63, 94)       // Rose-500 #f43f5e
+BEAR_MUTED = color.rgb(225, 29, 72)         // Rose-600 #e11d48
+ZINC_800 = color.rgb(39, 39, 42)            // Dark background #27272a
+ZINC_700 = color.rgb(63, 63, 70)            // Lighter dark #3f3f46
+ZINC_400 = color.rgb(161, 161, 170)         // Muted text #a1a1aa
+ZINC_200 = color.rgb(228, 228, 231)         // Light text #e4e4e7
+
+// User-adjustable colors with shadcn defaults
+bull_ob_color = input.color(color.new(color.rgb(16, 185, 129), 85), "Bullish OB Fill", group=grp_style, tooltip="Emerald - shadcn style")
+bear_ob_color = input.color(color.new(color.rgb(244, 63, 94), 85), "Bearish OB Fill", group=grp_style, tooltip="Rose - shadcn style")
+bull_border_color = input.color(color.new(color.rgb(16, 185, 129), 40), "Bullish Border", group=grp_style)
+bear_border_color = input.color(color.new(color.rgb(244, 63, 94), 40), "Bearish Border", group=grp_style)
+mitigated_color = input.color(color.new(color.rgb(113, 113, 122), 90), "Mitigated OB Fill", group=grp_style, tooltip="Zinc-500 muted")
+mitigated_border = color.new(color.rgb(113, 113, 122), 70)
 show_labels = input.bool(true, "Show Labels", group=grp_style)
+label_style = input.string("Minimal", "Label Style", options=["Minimal", "Detailed"], group=grp_style)
 
 // ============================================================================
 // SWING HIGH/LOW DETECTION (seperti Python swing_length=10)
@@ -230,7 +249,7 @@ _bear_strength = calc_ob_strength(_bear_ob_top, _bear_ob_bottom)
 if bullish_ob_detected
     // Only create if strength meets minimum (same as Python)
     if _bull_strength >= min_strength
-        // Create box
+        // Create box with shadcn-style subtle appearance
         new_box = box.new(
             left=_bull_ob_bar,
             top=_bull_ob_top,
@@ -249,22 +268,16 @@ if bullish_ob_detected
         array.push(bull_ob_mitigated, false)
         array.push(bull_ob_strengths, _bull_strength)
 
-        // Add label with strength
+        // Add label - shadcn minimal style
         if show_labels
-            label.new(
-                x=_bull_ob_bar,
-                y=_bull_ob_bottom,
-                text="Bull OB\n" + str.tostring(_bull_strength * 100, "#") + "%",
-                style=label.style_label_up,
-                color=bull_border_color,
-                textcolor=color.white,
-                size=size.tiny)
+            label_text = label_style == "Minimal" ? "▲ " + str.tostring(_bull_strength * 100, "#") + "%" : "OB ▲ " + str.tostring(_bull_strength * 100, "#.#") + "%"
+            label.new(x=_bull_ob_bar, y=_bull_ob_bottom, text=label_text, style=label.style_label_up, color=color.new(ZINC_800, 20), textcolor=BULL_PRIMARY, size=size.tiny)
 
 // Detect and create Bearish OB
 if bearish_ob_detected
     // Only create if strength meets minimum
     if _bear_strength >= min_strength
-        // Create box
+        // Create box with shadcn-style subtle appearance
         new_box = box.new(
             left=_bear_ob_bar,
             top=_bear_ob_top,
@@ -283,16 +296,10 @@ if bearish_ob_detected
         array.push(bear_ob_mitigated, false)
         array.push(bear_ob_strengths, _bear_strength)
 
-        // Add label with strength
+        // Add label - shadcn minimal style
         if show_labels
-            label.new(
-                x=_bear_ob_bar,
-                y=_bear_ob_top,
-                text="Bear OB\n" + str.tostring(_bear_strength * 100, "#") + "%",
-                style=label.style_label_down,
-                color=bear_border_color,
-                textcolor=color.white,
-                size=size.tiny)
+            label_text = label_style == "Minimal" ? "▼ " + str.tostring(_bear_strength * 100, "#") + "%" : "OB ▼ " + str.tostring(_bear_strength * 100, "#.#") + "%"
+            label.new(x=_bear_ob_bar, y=_bear_ob_top, text=label_text, style=label.style_label_down, color=color.new(ZINC_800, 20), textcolor=BEAR_PRIMARY, size=size.tiny)
 
 // ============================================================================
 // UPDATE ORDER BLOCKS (Extend & Check Mitigation)
@@ -325,7 +332,7 @@ if array.size(bull_ob_boxes) > 0
             array.set(bull_ob_mitigated, i, true)
             if show_mitigated
                 box.set_bgcolor(ob_box, mitigated_color)
-                box.set_border_color(ob_box, color.gray)
+                box.set_border_color(ob_box, mitigated_border)
                 box.set_border_style(ob_box, line.style_dashed)
             else
                 box.delete(ob_box)
@@ -367,7 +374,7 @@ if array.size(bear_ob_boxes) > 0
             array.set(bear_ob_mitigated, i, true)
             if show_mitigated
                 box.set_bgcolor(ob_box, mitigated_color)
-                box.set_border_color(ob_box, color.gray)
+                box.set_border_color(ob_box, mitigated_border)
                 box.set_border_style(ob_box, line.style_dashed)
             else
                 box.delete(ob_box)
@@ -384,14 +391,14 @@ if array.size(bear_ob_boxes) > 0
             box.set_right(ob_box, bar_index + 10)
 
 // ============================================================================
-// SWING POINT VISUALIZATION (optional)
+// SWING POINT VISUALIZATION (optional) - Shadcn muted style
 // ============================================================================
 plotshape(show_swing and is_swing_high(swing_length) ? high[swing_length] : na,
           title="Swing High", location=location.abovebar,
-          style=shape.triangledown, size=size.tiny, color=color.orange, offset=-swing_length)
+          style=shape.xcross, size=size.tiny, color=ZINC_400, offset=-swing_length)
 plotshape(show_swing and is_swing_low(swing_length) ? low[swing_length] : na,
           title="Swing Low", location=location.belowbar,
-          style=shape.triangleup, size=size.tiny, color=color.blue, offset=-swing_length)
+          style=shape.xcross, size=size.tiny, color=ZINC_400, offset=-swing_length)
 
 // ============================================================================
 // ALERTS
@@ -425,10 +432,17 @@ alertcondition(bullish_ob_detected, title="New Bullish OB", message="SURGE-WSI: 
 alertcondition(bearish_ob_detected, title="New Bearish OB", message="SURGE-WSI: New Bearish Order Block detected")
 
 // ============================================================================
-// INFO TABLE
+// INFO TABLE - Shadcn/UI Card Style
 // ============================================================================
 
-var table info_table = table.new(position.top_right, 2, 6, bgcolor=color.new(color.black, 80), border_width=1)
+// Shadcn-style card: dark background, subtle border, clean typography
+var table info_table = table.new(
+    position.top_right, 2, 5,
+    bgcolor=color.new(ZINC_800, 5),
+    frame_color=color.new(ZINC_700, 30),
+    frame_width=1,
+    border_color=color.new(ZINC_700, 60),
+    border_width=1)
 
 if barstate.islast
     active_bull_count = 0
@@ -454,22 +468,29 @@ if barstate.islast
     if active_bear_count > 0
         avg_bear_strength := avg_bear_strength / active_bear_count
 
-    table.cell(info_table, 0, 0, "SURGE OB v2", text_color=color.white, text_size=size.small)
-    table.cell(info_table, 1, 0, "", text_color=color.white, text_size=size.small)
-    table.cell(info_table, 0, 1, "Bull OB:", text_color=color.green, text_size=size.tiny)
-    table.cell(info_table, 1, 1, str.tostring(active_bull_count) + " (avg " + str.tostring(avg_bull_strength * 100, "#") + "%)", text_color=color.green, text_size=size.tiny)
-    table.cell(info_table, 0, 2, "Bear OB:", text_color=color.red, text_size=size.tiny)
-    table.cell(info_table, 1, 2, str.tostring(active_bear_count) + " (avg " + str.tostring(avg_bear_strength * 100, "#") + "%)", text_color=color.red, text_size=size.tiny)
-    table.cell(info_table, 0, 3, "Swing Length:", text_color=color.gray, text_size=size.tiny)
-    table.cell(info_table, 1, 3, str.tostring(swing_length), text_color=color.gray, text_size=size.tiny)
-    table.cell(info_table, 0, 4, "Min Strength:", text_color=color.gray, text_size=size.tiny)
-    table.cell(info_table, 1, 4, str.tostring(min_strength * 100, "#") + "%", text_color=color.gray, text_size=size.tiny)
-    table.cell(info_table, 0, 5, "Max Age:", text_color=color.gray, text_size=size.tiny)
-    table.cell(info_table, 1, 5, str.tostring(max_ob_age) + " bars", text_color=color.gray, text_size=size.tiny)
+    // Header row - clean title
+    table.cell(info_table, 0, 0, "SURGE", text_color=ZINC_200, text_size=size.small, text_halign=text.align_left)
+    table.cell(info_table, 1, 0, "OB", text_color=ZINC_400, text_size=size.small, text_halign=text.align_right)
+
+    // Bull stats with badge style
+    table.cell(info_table, 0, 1, "▲ Bullish", text_color=BULL_PRIMARY, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(info_table, 1, 1, str.tostring(active_bull_count) + "  " + str.tostring(avg_bull_strength * 100, "#") + "%", text_color=BULL_MUTED, text_size=size.tiny, text_halign=text.align_right)
+
+    // Bear stats with badge style
+    table.cell(info_table, 0, 2, "▼ Bearish", text_color=BEAR_PRIMARY, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(info_table, 1, 2, str.tostring(active_bear_count) + "  " + str.tostring(avg_bear_strength * 100, "#") + "%", text_color=BEAR_MUTED, text_size=size.tiny, text_halign=text.align_right)
+
+    // Settings info - muted
+    table.cell(info_table, 0, 3, "Swing", text_color=ZINC_400, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(info_table, 1, 3, str.tostring(swing_length), text_color=ZINC_400, text_size=size.tiny, text_halign=text.align_right)
+
+    table.cell(info_table, 0, 4, "Min %", text_color=ZINC_400, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(info_table, 1, 4, str.tostring(min_strength * 100, "#") + "%", text_color=ZINC_400, text_size=size.tiny, text_halign=text.align_right)
 
 // ============================================================================
-// PLOT SIGNALS (optional visual)
+// PLOT SIGNALS - Shadcn style markers
 // ============================================================================
 
-plotshape(bullish_ob_detected, title="Bullish OB Signal", location=location.belowbar, style=shape.triangleup, size=size.tiny, color=color.green)
-plotshape(bearish_ob_detected, title="Bearish OB Signal", location=location.abovebar, style=shape.triangledown, size=size.tiny, color=color.red)
+plotshape(bullish_ob_detected, title="Bullish OB Signal", location=location.belowbar, style=shape.diamond, size=size.tiny, color=BULL_PRIMARY)
+plotshape(bearish_ob_detected, title="Bearish OB Signal", location=location.abovebar, style=shape.diamond, size=size.tiny, color=BEAR_PRIMARY)
+
