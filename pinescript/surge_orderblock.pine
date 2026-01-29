@@ -29,22 +29,22 @@ grp_style = "Style Settings"
 // Shadcn-style color palette (muted, sophisticated)
 // Emerald for bullish (hsl 142 76% 36%)
 // Rose for bearish (hsl 346 77% 50%)
-BULL_PRIMARY = #10b981      // Emerald-500
-BULL_MUTED = #059669        // Emerald-600
-BEAR_PRIMARY = #f43f5e      // Rose-500
-BEAR_MUTED = #e11d48        // Rose-600
-ZINC_800 = #27272a          // Dark background
-ZINC_700 = #3f3f46          // Lighter dark
-ZINC_400 = #a1a1aa          // Muted text
-ZINC_200 = #e4e4e7          // Light text
+BULL_PRIMARY = color.rgb(16, 185, 129)      // Emerald-500 #10b981
+BULL_MUTED = color.rgb(5, 150, 105)         // Emerald-600 #059669
+BEAR_PRIMARY = color.rgb(244, 63, 94)       // Rose-500 #f43f5e
+BEAR_MUTED = color.rgb(225, 29, 72)         // Rose-600 #e11d48
+ZINC_800 = color.rgb(39, 39, 42)            // Dark background #27272a
+ZINC_700 = color.rgb(63, 63, 70)            // Lighter dark #3f3f46
+ZINC_400 = color.rgb(161, 161, 170)         // Muted text #a1a1aa
+ZINC_200 = color.rgb(228, 228, 231)         // Light text #e4e4e7
 
 // User-adjustable colors with shadcn defaults
-bull_ob_color = input.color(color.new(#10b981, 85), "Bullish OB Fill", group=grp_style, tooltip="Emerald - shadcn style")
-bear_ob_color = input.color(color.new(#f43f5e, 85), "Bearish OB Fill", group=grp_style, tooltip="Rose - shadcn style")
-bull_border_color = input.color(color.new(#10b981, 40), "Bullish Border", group=grp_style)
-bear_border_color = input.color(color.new(#f43f5e, 40), "Bearish Border", group=grp_style)
-mitigated_color = input.color(color.new(#71717a, 90), "Mitigated OB Fill", group=grp_style, tooltip="Zinc-500 muted")
-mitigated_border = color.new(#71717a, 70)
+bull_ob_color = input.color(color.new(color.rgb(16, 185, 129), 85), "Bullish OB Fill", group=grp_style, tooltip="Emerald - shadcn style")
+bear_ob_color = input.color(color.new(color.rgb(244, 63, 94), 85), "Bearish OB Fill", group=grp_style, tooltip="Rose - shadcn style")
+bull_border_color = input.color(color.new(color.rgb(16, 185, 129), 40), "Bullish Border", group=grp_style)
+bear_border_color = input.color(color.new(color.rgb(244, 63, 94), 40), "Bearish Border", group=grp_style)
+mitigated_color = input.color(color.new(color.rgb(113, 113, 122), 90), "Mitigated OB Fill", group=grp_style, tooltip="Zinc-500 muted")
+mitigated_border = color.new(color.rgb(113, 113, 122), 70)
 show_labels = input.bool(true, "Show Labels", group=grp_style)
 label_style = input.string("Minimal", "Label Style", options=["Minimal", "Detailed"], group=grp_style)
 

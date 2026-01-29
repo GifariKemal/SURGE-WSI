@@ -26,22 +26,22 @@ grp_style = "Style Settings"
 // Shadcn-style color palette (muted, sophisticated)
 // Cyan for bullish FVG (different from OB emerald)
 // Orange for bearish FVG (different from OB rose)
-BULL_PRIMARY = #06b6d4      // Cyan-500
-BULL_MUTED = #0891b2        // Cyan-600
-BEAR_PRIMARY = #f97316      // Orange-500
-BEAR_MUTED = #ea580c        // Orange-600
-ZINC_800 = #27272a          // Dark background
-ZINC_700 = #3f3f46          // Lighter dark
-ZINC_400 = #a1a1aa          // Muted text
-ZINC_200 = #e4e4e7          // Light text
+BULL_PRIMARY = color.rgb(6, 182, 212)       // Cyan-500 #06b6d4
+BULL_MUTED = color.rgb(8, 145, 178)         // Cyan-600 #0891b2
+BEAR_PRIMARY = color.rgb(249, 115, 22)      // Orange-500 #f97316
+BEAR_MUTED = color.rgb(234, 88, 12)         // Orange-600 #ea580c
+ZINC_800 = color.rgb(39, 39, 42)            // Dark background #27272a
+ZINC_700 = color.rgb(63, 63, 70)            // Lighter dark #3f3f46
+ZINC_400 = color.rgb(161, 161, 170)         // Muted text #a1a1aa
+ZINC_200 = color.rgb(228, 228, 231)         // Light text #e4e4e7
 
 // User-adjustable colors with shadcn defaults
-bull_fvg_color = input.color(color.new(#06b6d4, 88), "Bullish FVG Fill", group=grp_style, tooltip="Cyan - shadcn style")
-bear_fvg_color = input.color(color.new(#f97316, 88), "Bearish FVG Fill", group=grp_style, tooltip="Orange - shadcn style")
-bull_border_color = input.color(color.new(#06b6d4, 50), "Bullish Border", group=grp_style)
-bear_border_color = input.color(color.new(#f97316, 50), "Bearish Border", group=grp_style)
-filled_color = input.color(color.new(#71717a, 92), "Filled FVG Color", group=grp_style, tooltip="Zinc-500 muted")
-filled_border = color.new(#71717a, 70)
+bull_fvg_color = input.color(color.new(color.rgb(6, 182, 212), 88), "Bullish FVG Fill", group=grp_style, tooltip="Cyan - shadcn style")
+bear_fvg_color = input.color(color.new(color.rgb(249, 115, 22), 88), "Bearish FVG Fill", group=grp_style, tooltip="Orange - shadcn style")
+bull_border_color = input.color(color.new(color.rgb(6, 182, 212), 50), "Bullish Border", group=grp_style)
+bear_border_color = input.color(color.new(color.rgb(249, 115, 22), 50), "Bearish Border", group=grp_style)
+filled_color = input.color(color.new(color.rgb(113, 113, 122), 92), "Filled FVG Color", group=grp_style, tooltip="Zinc-500 muted")
+filled_border = color.new(color.rgb(113, 113, 122), 70)
 show_labels = input.bool(true, "Show Labels", group=grp_style)
 show_ce_line = input.bool(true, "Show CE (50% level)", group=grp_style, tooltip="Show Consequent Encroachment level")
 label_style = input.string("Minimal", "Label Style", options=["Minimal", "Detailed"], group=grp_style)
