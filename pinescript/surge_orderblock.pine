@@ -270,17 +270,8 @@ if bullish_ob_detected
 
         // Add label - shadcn minimal style
         if show_labels
-            label_text = label_style == "Minimal" ?
-                "▲ " + str.tostring(_bull_strength * 100, "#") + "%" :
-                "OB ▲ " + str.tostring(_bull_strength * 100, "#.#") + "%"
-            label.new(
-                x=_bull_ob_bar,
-                y=_bull_ob_bottom,
-                text=label_text,
-                style=label.style_label_up,
-                color=color.new(ZINC_800, 20),
-                textcolor=BULL_PRIMARY,
-                size=size.tiny)
+            label_text = label_style == "Minimal" ? "▲ " + str.tostring(_bull_strength * 100, "#") + "%" : "OB ▲ " + str.tostring(_bull_strength * 100, "#.#") + "%"
+            label.new(x=_bull_ob_bar, y=_bull_ob_bottom, text=label_text, style=label.style_label_up, color=color.new(ZINC_800, 20), textcolor=BULL_PRIMARY, size=size.tiny)
 
 // Detect and create Bearish OB
 if bearish_ob_detected
@@ -307,17 +298,8 @@ if bearish_ob_detected
 
         // Add label - shadcn minimal style
         if show_labels
-            label_text = label_style == "Minimal" ?
-                "▼ " + str.tostring(_bear_strength * 100, "#") + "%" :
-                "OB ▼ " + str.tostring(_bear_strength * 100, "#.#") + "%"
-            label.new(
-                x=_bear_ob_bar,
-                y=_bear_ob_top,
-                text=label_text,
-                style=label.style_label_down,
-                color=color.new(ZINC_800, 20),
-                textcolor=BEAR_PRIMARY,
-                size=size.tiny)
+            label_text = label_style == "Minimal" ? "▼ " + str.tostring(_bear_strength * 100, "#") + "%" : "OB ▼ " + str.tostring(_bear_strength * 100, "#.#") + "%"
+            label.new(x=_bear_ob_bar, y=_bear_ob_top, text=label_text, style=label.style_label_down, color=color.new(ZINC_800, 20), textcolor=BEAR_PRIMARY, size=size.tiny)
 
 // ============================================================================
 // UPDATE ORDER BLOCKS (Extend & Check Mitigation)
