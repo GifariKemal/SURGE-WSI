@@ -1,5 +1,5 @@
 //@version=6
-indicator("SURGE FVG v2", shorttitle="S-FVG", overlay=true, max_boxes_count=500, max_labels_count=500)
+indicator("SURGE-WSI FVG v2", shorttitle="SURGE-FVG", overlay=true, max_boxes_count=500, max_labels_count=500)
 
 // ============================================================================
 // SURGE-WSI Fair Value Gap (FVG) Detector v2
@@ -18,33 +18,14 @@ show_filled = input.bool(true, "Show Filled FVG", group=grp_fvg, tooltip="Show F
 extend_fvg = input.bool(true, "Extend FVG to Current Bar", group=grp_fvg, tooltip="Extend FVG box to current bar")
 fill_threshold = input.float(50.0, "Fill Threshold (%)", minval=10.0, maxval=100.0, step=5.0, group=grp_fvg, tooltip="Percentage of FVG that must be filled (same as Python: 50%)")
 
-// ============================================================================
-// STYLE SETTINGS - Shadcn/UI Inspired Theme
-// ============================================================================
 grp_style = "Style Settings"
-
-// Shadcn-style color palette (muted, sophisticated)
-// Cyan for bullish FVG (different from OB emerald)
-// Orange for bearish FVG (different from OB rose)
-BULL_PRIMARY = color.rgb(6, 182, 212)       // Cyan-500 #06b6d4
-BULL_MUTED = color.rgb(8, 145, 178)         // Cyan-600 #0891b2
-BEAR_PRIMARY = color.rgb(249, 115, 22)      // Orange-500 #f97316
-BEAR_MUTED = color.rgb(234, 88, 12)         // Orange-600 #ea580c
-ZINC_800 = color.rgb(39, 39, 42)            // Dark background #27272a
-ZINC_700 = color.rgb(63, 63, 70)            // Lighter dark #3f3f46
-ZINC_400 = color.rgb(161, 161, 170)         // Muted text #a1a1aa
-ZINC_200 = color.rgb(228, 228, 231)         // Light text #e4e4e7
-
-// User-adjustable colors with shadcn defaults
-bull_fvg_color = input.color(color.new(color.rgb(6, 182, 212), 88), "Bullish FVG Fill", group=grp_style, tooltip="Cyan - shadcn style")
-bear_fvg_color = input.color(color.new(color.rgb(249, 115, 22), 88), "Bearish FVG Fill", group=grp_style, tooltip="Orange - shadcn style")
-bull_border_color = input.color(color.new(color.rgb(6, 182, 212), 50), "Bullish Border", group=grp_style)
-bear_border_color = input.color(color.new(color.rgb(249, 115, 22), 50), "Bearish Border", group=grp_style)
-filled_color = input.color(color.new(color.rgb(113, 113, 122), 92), "Filled FVG Color", group=grp_style, tooltip="Zinc-500 muted")
-filled_border = color.new(color.rgb(113, 113, 122), 70)
+bull_fvg_color = input.color(color.new(color.teal, 80), "Bullish FVG Color", group=grp_style)
+bear_fvg_color = input.color(color.new(color.maroon, 80), "Bearish FVG Color", group=grp_style)
+bull_border_color = input.color(color.teal, "Bullish Border", group=grp_style)
+bear_border_color = input.color(color.maroon, "Bearish Border", group=grp_style)
+filled_color = input.color(color.new(color.gray, 85), "Filled FVG Color", group=grp_style)
 show_labels = input.bool(true, "Show Labels", group=grp_style)
 show_ce_line = input.bool(true, "Show CE (50% level)", group=grp_style, tooltip="Show Consequent Encroachment level")
-label_style = input.string("Minimal", "Label Style", options=["Minimal", "Detailed"], group=grp_style)
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -122,14 +103,29 @@ if bullish_fvg_detected()
     [fvg_top, fvg_bottom] = get_bull_fvg()
     fvg_bar = bar_index - 1  // FVG is at the middle candle
 
-    // Create box with shadcn-style subtle appearance
-    new_box = box.new(left=fvg_bar, top=fvg_top, right=extend_fvg ? bar_index + 10 : fvg_bar + max_fvg_age, bottom=fvg_bottom, bgcolor=bull_fvg_color, border_color=bull_border_color, border_width=1, border_style=line.style_solid)
+    // Create box
+    new_box = box.new(
+        left=fvg_bar,
+        top=fvg_top,
+        right=extend_fvg ? bar_index + 10 : fvg_bar + max_fvg_age,
+        bottom=fvg_bottom,
+        bgcolor=bull_fvg_color,
+        border_color=bull_border_color,
+        border_width=1,
+        border_style=line.style_solid)
 
-    // Create CE line (50% level) - subtle dotted line
+    // Create CE line (50% level)
     ce_level = (fvg_top + fvg_bottom) / 2
     var line ce_line = na
     if show_ce_line
-        ce_line := line.new(x1=fvg_bar, y1=ce_level, x2=extend_fvg ? bar_index + 10 : fvg_bar + max_fvg_age, y2=ce_level, color=color.new(BULL_MUTED, 60), style=line.style_dotted, width=1)
+        ce_line := line.new(
+            x1=fvg_bar,
+            y1=ce_level,
+            x2=extend_fvg ? bar_index + 10 : fvg_bar + max_fvg_age,
+            y2=ce_level,
+            color=bull_border_color,
+            style=line.style_dotted,
+            width=1)
 
     // Store data
     array.push(bull_fvg_boxes, new_box)
@@ -140,25 +136,46 @@ if bullish_fvg_detected()
     array.push(bull_fvg_filled, false)
     array.push(bull_fvg_fill_pct, 0.0)
 
-    // Add label - shadcn minimal style
+    // Add label
     if show_labels
         fvg_pips = price_to_pips(fvg_top - fvg_bottom)
-        label_text = label_style == "Minimal" ? "◇ " + str.tostring(fvg_pips, "#.#") + "p" : "FVG ◇ " + str.tostring(fvg_pips, "#.#") + " pips"
-        label.new(x=fvg_bar, y=fvg_bottom, text=label_text, style=label.style_label_up, color=color.new(ZINC_800, 20), textcolor=BULL_PRIMARY, size=size.tiny)
+        label.new(
+            x=fvg_bar,
+            y=fvg_bottom,
+            text="Bull FVG\n" + str.tostring(fvg_pips, "#.#") + " pips",
+            style=label.style_label_up,
+            color=bull_border_color,
+            textcolor=color.white,
+            size=size.tiny)
 
 // Detect and create Bearish FVG
 if bearish_fvg_detected()
     [fvg_top, fvg_bottom] = get_bear_fvg()
     fvg_bar = bar_index - 1
 
-    // Create box with shadcn-style subtle appearance
-    new_box = box.new(left=fvg_bar, top=fvg_top, right=extend_fvg ? bar_index + 10 : fvg_bar + max_fvg_age, bottom=fvg_bottom, bgcolor=bear_fvg_color, border_color=bear_border_color, border_width=1, border_style=line.style_solid)
+    // Create box
+    new_box = box.new(
+        left=fvg_bar,
+        top=fvg_top,
+        right=extend_fvg ? bar_index + 10 : fvg_bar + max_fvg_age,
+        bottom=fvg_bottom,
+        bgcolor=bear_fvg_color,
+        border_color=bear_border_color,
+        border_width=1,
+        border_style=line.style_solid)
 
-    // Create CE line (50% level) - subtle dotted line
+    // Create CE line (50% level)
     ce_level = (fvg_top + fvg_bottom) / 2
     var line ce_line = na
     if show_ce_line
-        ce_line := line.new(x1=fvg_bar, y1=ce_level, x2=extend_fvg ? bar_index + 10 : fvg_bar + max_fvg_age, y2=ce_level, color=color.new(BEAR_MUTED, 60), style=line.style_dotted, width=1)
+        ce_line := line.new(
+            x1=fvg_bar,
+            y1=ce_level,
+            x2=extend_fvg ? bar_index + 10 : fvg_bar + max_fvg_age,
+            y2=ce_level,
+            color=bear_border_color,
+            style=line.style_dotted,
+            width=1)
 
     // Store data
     array.push(bear_fvg_boxes, new_box)
@@ -169,11 +186,17 @@ if bearish_fvg_detected()
     array.push(bear_fvg_filled, false)
     array.push(bear_fvg_fill_pct, 0.0)
 
-    // Add label - shadcn minimal style
+    // Add label
     if show_labels
         fvg_pips = price_to_pips(fvg_top - fvg_bottom)
-        label_text = label_style == "Minimal" ? "◆ " + str.tostring(fvg_pips, "#.#") + "p" : "FVG ◆ " + str.tostring(fvg_pips, "#.#") + " pips"
-        label.new(x=fvg_bar, y=fvg_top, text=label_text, style=label.style_label_down, color=color.new(ZINC_800, 20), textcolor=BEAR_PRIMARY, size=size.tiny)
+        label.new(
+            x=fvg_bar,
+            y=fvg_top,
+            text="Bear FVG\n" + str.tostring(fvg_pips, "#.#") + " pips",
+            style=label.style_label_down,
+            color=bear_border_color,
+            textcolor=color.white,
+            size=size.tiny)
 
 // ============================================================================
 // UPDATE FVGs (Extend & Check Fill Status)
@@ -219,10 +242,10 @@ if array.size(bull_fvg_boxes) > 0
                     array.set(bull_fvg_filled, i, true)
                     if show_filled
                         box.set_bgcolor(fvg_box, filled_color)
-                        box.set_border_color(fvg_box, filled_border)
+                        box.set_border_color(fvg_box, color.gray)
                         box.set_border_style(fvg_box, line.style_dashed)
                         if not na(ce_line)
-                            line.set_color(ce_line, filled_border)
+                            line.set_color(ce_line, color.gray)
                     else
                         box.delete(fvg_box)
                         if not na(ce_line)
@@ -280,10 +303,10 @@ if array.size(bear_fvg_boxes) > 0
                     array.set(bear_fvg_filled, i, true)
                     if show_filled
                         box.set_bgcolor(fvg_box, filled_color)
-                        box.set_border_color(fvg_box, filled_border)
+                        box.set_border_color(fvg_box, color.gray)
                         box.set_border_style(fvg_box, line.style_dashed)
                         if not na(ce_line)
-                            line.set_color(ce_line, filled_border)
+                            line.set_color(ce_line, color.gray)
                     else
                         box.delete(fvg_box)
                         if not na(ce_line)
@@ -333,10 +356,10 @@ alertcondition(bullish_fvg_detected(), title="New Bullish FVG", message="SURGE-W
 alertcondition(bearish_fvg_detected(), title="New Bearish FVG", message="SURGE-WSI: New Bearish FVG detected")
 
 // ============================================================================
-// INFO TABLE - Shadcn/UI Card Style
+// INFO TABLE
 // ============================================================================
 
-var table info_table = table.new(position.top_right, 2, 5, bgcolor=color.new(ZINC_800, 5), frame_color=color.new(ZINC_700, 30), frame_width=1, border_color=color.new(ZINC_700, 60), border_width=1)
+var table info_table = table.new(position.top_right, 2, 6, bgcolor=color.new(color.black, 80), border_width=1)
 
 if barstate.islast
     active_bull_count = 0
@@ -353,28 +376,22 @@ if barstate.islast
             if not array.get(bear_fvg_filled, i)
                 active_bear_count += 1
 
-    // Header row - clean title
-    table.cell(info_table, 0, 0, "SURGE", text_color=ZINC_200, text_size=size.small, text_halign=text.align_left)
-    table.cell(info_table, 1, 0, "FVG", text_color=ZINC_400, text_size=size.small, text_halign=text.align_right)
-
-    // Bull stats with badge style
-    table.cell(info_table, 0, 1, "◇ Bullish", text_color=BULL_PRIMARY, text_size=size.tiny, text_halign=text.align_left)
-    table.cell(info_table, 1, 1, str.tostring(active_bull_count), text_color=BULL_MUTED, text_size=size.tiny, text_halign=text.align_right)
-
-    // Bear stats with badge style
-    table.cell(info_table, 0, 2, "◆ Bearish", text_color=BEAR_PRIMARY, text_size=size.tiny, text_halign=text.align_left)
-    table.cell(info_table, 1, 2, str.tostring(active_bear_count), text_color=BEAR_MUTED, text_size=size.tiny, text_halign=text.align_right)
-
-    // Settings info - muted
-    table.cell(info_table, 0, 3, "Min", text_color=ZINC_400, text_size=size.tiny, text_halign=text.align_left)
-    table.cell(info_table, 1, 3, str.tostring(min_fvg_pips, "#.#") + "p", text_color=ZINC_400, text_size=size.tiny, text_halign=text.align_right)
-
-    table.cell(info_table, 0, 4, "Fill", text_color=ZINC_400, text_size=size.tiny, text_halign=text.align_left)
-    table.cell(info_table, 1, 4, str.tostring(fill_threshold, "#") + "%", text_color=ZINC_400, text_size=size.tiny, text_halign=text.align_right)
+    table.cell(info_table, 0, 0, "SURGE FVG v2", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 0, "", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 0, 1, "Bull FVG:", text_color=color.teal, text_size=size.tiny)
+    table.cell(info_table, 1, 1, str.tostring(active_bull_count), text_color=color.teal, text_size=size.tiny)
+    table.cell(info_table, 0, 2, "Bear FVG:", text_color=color.maroon, text_size=size.tiny)
+    table.cell(info_table, 1, 2, str.tostring(active_bear_count), text_color=color.maroon, text_size=size.tiny)
+    table.cell(info_table, 0, 3, "Min Size:", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 1, 3, str.tostring(min_fvg_pips, "#.#") + " pips", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 0, 4, "Max Age:", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 1, 4, str.tostring(max_fvg_age) + " bars", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 0, 5, "Fill %:", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 1, 5, str.tostring(fill_threshold, "#") + "%", text_color=color.gray, text_size=size.tiny)
 
 // ============================================================================
-// PLOT SIGNALS - Shadcn style markers
+// PLOT SIGNALS
 // ============================================================================
 
-plotshape(bullish_fvg_detected(), title="Bullish FVG Signal", location=location.belowbar, style=shape.diamond, size=size.tiny, color=BULL_PRIMARY)
-plotshape(bearish_fvg_detected(), title="Bearish FVG Signal", location=location.abovebar, style=shape.diamond, size=size.tiny, color=BEAR_PRIMARY)
+plotshape(bullish_fvg_detected(), title="Bullish FVG Signal", location=location.belowbar, style=shape.diamond, size=size.tiny, color=color.teal)
+plotshape(bearish_fvg_detected(), title="Bearish FVG Signal", location=location.abovebar, style=shape.diamond, size=size.tiny, color=color.maroon)
