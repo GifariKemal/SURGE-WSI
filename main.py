@@ -451,7 +451,7 @@ class SurgeWSI:
     async def _telegram_market(self):
         """Get comprehensive market analysis"""
         try:
-            symbol = self.symbol
+            symbol = config.trading.symbol
 
             # Get current price
             tick = self.mt5.get_tick_sync(symbol)
