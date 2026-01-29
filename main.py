@@ -462,7 +462,7 @@ class SurgeWSI:
             use_intel = self.executor.use_intelligent_filter
 
             # Get regime
-            regime_result = self.executor.regime_detector.last_result if self.executor.regime_detector else None
+            regime_result = self.executor.regime_detector.last_info if self.executor.regime_detector else None
 
             # Get POIs
             poi_result = self.executor.poi_detector.last_result if self.executor.poi_detector else None
@@ -491,9 +491,10 @@ class SurgeWSI:
             # Regime section
             msg += f"<b>📈 Regime:</b>\n"
             if regime_result:
-                regime_emoji = "🟢" if regime_result.regime == "BULLISH" else ("🔴" if regime_result.regime == "BEARISH" else "⚪")
-                msg += TF.item("State", f"{regime_emoji} {regime_result.regime}")
-                msg += TF.item("Bias", regime_result.trade_bias)
+                regime_str = regime_result.regime.value if hasattr(regime_result.regime, 'value') else str(regime_result.regime)
+                regime_emoji = "🟢" if "BULLISH" in regime_str else ("🔴" if "BEARISH" in regime_str else "⚪")
+                msg += TF.item("State", f"{regime_emoji} {regime_str}")
+                msg += TF.item("Bias", regime_result.bias)
                 msg += TF.item("Probability", f"{regime_result.probability:.0%}")
                 msg += TF.item("Tradeable", "YES ✅" if regime_result.is_tradeable else "NO ❌")
             else:
@@ -509,7 +510,7 @@ class SurgeWSI:
                 msg += TF.item("Bearish POIs", str(len(bearish_pois)))
 
                 # Check if price at POI
-                direction = regime_result.trade_bias if regime_result else "BUY"
+                direction = regime_result.bias if regime_result else "BUY"
                 at_poi, poi_info = poi_result.price_at_poi(current_price, direction)
                 msg += TF.item("Price at POI", "YES ✅" if at_poi else "NO ❌")
 
@@ -538,7 +539,7 @@ class SurgeWSI:
                 reasons.append("Regime not tradeable")
 
             if poi_result:
-                direction = regime_result.trade_bias if regime_result else "BUY"
+                direction = regime_result.bias if regime_result else "BUY"
                 at_poi, _ = poi_result.price_at_poi(current_price, direction)
                 if not at_poi:
                     reasons.append("Price not at POI zone")
@@ -546,10 +547,10 @@ class SurgeWSI:
             if can_trade and not reasons:
                 msg += f"  ✅ <b>TRADING POSSIBLE</b>\n"
                 if regime_result:
-                    msg += f"  Direction: <b>{regime_result.trade_bias}</b>\n"
+                    msg += f"  Direction: <b>{regime_result.bias}</b>\n"
             elif can_trade and reasons:
                 msg += f"  ⏳ <b>WAIT FOR ENTRY</b>\n"
-                msg += f"  Direction: <b>{regime_result.trade_bias if regime_result else 'N/A'}</b>\n"
+                msg += f"  Direction: <b>{regime_result.bias if regime_result else 'N/A'}</b>\n"
                 for r in reasons:
                     msg += f"  • {r}\n"
             else:
