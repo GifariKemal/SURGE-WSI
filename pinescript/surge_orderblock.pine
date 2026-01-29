@@ -113,19 +113,19 @@ bearish_ob_pattern1() =>
 // ============================================================================
 bullish_ob_pattern2() =>
     // Down candle at recent swing low followed by reversal
-    is_down_candle(3) and
-    low[3] <= ta.lowest(low, swing_length * 2) and
-    is_up_candle(2) and
-    is_up_candle(1) and
-    (close - low[3]) > (get_candle_range(3) * impulsive_ratio)
+    (is_down_candle(3) and
+     low[3] <= ta.lowest(low, swing_length * 2) and
+     is_up_candle(2) and
+     is_up_candle(1) and
+     (close - low[3]) > (get_candle_range(3) * impulsive_ratio))
 
 bearish_ob_pattern2() =>
     // Up candle at recent swing high followed by reversal
-    is_up_candle(3) and
-    high[3] >= ta.highest(high, swing_length * 2) and
-    is_down_candle(2) and
-    is_down_candle(1) and
-    (high[3] - close) > (get_candle_range(3) * impulsive_ratio)
+    (is_up_candle(3) and
+     high[3] >= ta.highest(high, swing_length * 2) and
+     is_down_candle(2) and
+     is_down_candle(1) and
+     (high[3] - close) > (get_candle_range(3) * impulsive_ratio))
 
 // ============================================================================
 // PATTERN 3: Engulfing OB pattern
@@ -133,19 +133,19 @@ bearish_ob_pattern2() =>
 // ============================================================================
 bullish_ob_pattern3() =>
     // Bearish candle followed by bullish engulfing
-    is_down_candle(2) and
-    is_up_candle(1) and
-    open[1] <= close[2] and
-    close[1] >= open[2] and
-    get_body_size(1) > get_body_size(2) * 1.2
+    (is_down_candle(2) and
+     is_up_candle(1) and
+     open[1] <= close[2] and
+     close[1] >= open[2] and
+     get_body_size(1) > get_body_size(2) * 1.2)
 
 bearish_ob_pattern3() =>
     // Bullish candle followed by bearish engulfing
-    is_up_candle(2) and
-    is_down_candle(1) and
-    open[1] >= close[2] and
-    close[1] <= open[2] and
-    get_body_size(1) > get_body_size(2) * 1.2
+    (is_up_candle(2) and
+     is_down_candle(1) and
+     open[1] >= close[2] and
+     close[1] <= open[2] and
+     get_body_size(1) > get_body_size(2) * 1.2)
 
 // ============================================================================
 // COMBINED DETECTION
