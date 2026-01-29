@@ -2,7 +2,7 @@
 // SURGE-WSI Fair Value Gap (FVG) Detector
 // ============================================================================
 //
-// Pine Script v5 - untuk TradingView
+// Pine Script v6 - untuk TradingView
 //
 // Logika ini sama persis dengan poi_detector.py di SURGE-WSI
 // Gunakan untuk verifikasi akurasi deteksi FVG
@@ -14,7 +14,7 @@
 // Author: SURIOTA Team
 // ============================================================================
 
-//@version=5
+//@version=6
 indicator("SURGE-WSI Fair Value Gap", shorttitle="SURGE FVG", overlay=true, max_boxes_count=500, max_labels_count=500)
 
 // ============================================================================
@@ -41,7 +41,7 @@ show_ce_line = input.bool(true, "Show CE (Consequent Encroachment)", group=grp_s
 // ============================================================================
 
 // Convert price to pips (for forex pairs)
-price_to_pips(price_diff) =>
+price_to_pips(float price_diff) =>
     // Detect if it's JPY pair (2 decimals) or regular (4-5 decimals)
     pip_size = syminfo.mintick >= 0.01 ? 0.01 : 0.0001
     math.abs(price_diff) / pip_size
@@ -60,16 +60,14 @@ bullish_fvg_detected() =>
     fvg_high = low      // Low of current candle (top of gap)
     fvg_low = high[2]   // High of candle 2 bars ago (bottom of gap)
     gap_size = price_to_pips(fvg_high - fvg_low)
-
-    fvg_high > fvg_low and gap_size >= min_fvg_pips
+    (fvg_high > fvg_low and gap_size >= min_fvg_pips)
 
 // Bearish FVG: Gap down - High of candle 2 < Low of candle 0
 bearish_fvg_detected() =>
     fvg_high = low[2]   // Low of candle 2 bars ago (top of gap)
     fvg_low = high      // High of current candle (bottom of gap)
     gap_size = price_to_pips(fvg_high - fvg_low)
-
-    fvg_high > fvg_low and gap_size >= min_fvg_pips
+    (fvg_high > fvg_low and gap_size >= min_fvg_pips)
 
 // Get FVG boundaries
 get_bull_fvg() =>
@@ -114,12 +112,11 @@ if bullish_fvg_detected()
         bgcolor=bull_fvg_color,
         border_color=bull_border_color,
         border_width=1,
-        border_style=line.style_solid
-    )
+        border_style=line.style_solid)
 
     // Create CE line (50% level)
     ce_level = (fvg_top + fvg_bottom) / 2
-    ce_line = line(na)
+    var line ce_line = na
     if show_ce_line
         ce_line := line.new(
             x1=fvg_bar,
@@ -128,8 +125,7 @@ if bullish_fvg_detected()
             y2=ce_level,
             color=bull_border_color,
             style=line.style_dotted,
-            width=1
-        )
+            width=1)
 
     // Store data
     array.push(bull_fvg_boxes, new_box)
@@ -149,8 +145,7 @@ if bullish_fvg_detected()
             style=label.style_label_up,
             color=bull_border_color,
             textcolor=color.white,
-            size=size.tiny
-        )
+            size=size.tiny)
 
 // Detect and create Bearish FVG
 if bearish_fvg_detected()
@@ -166,12 +161,11 @@ if bearish_fvg_detected()
         bgcolor=bear_fvg_color,
         border_color=bear_border_color,
         border_width=1,
-        border_style=line.style_solid
-    )
+        border_style=line.style_solid)
 
     // Create CE line (50% level)
     ce_level = (fvg_top + fvg_bottom) / 2
-    ce_line = line(na)
+    var line ce_line = na
     if show_ce_line
         ce_line := line.new(
             x1=fvg_bar,
@@ -180,8 +174,7 @@ if bearish_fvg_detected()
             y2=ce_level,
             color=bear_border_color,
             style=line.style_dotted,
-            width=1
-        )
+            width=1)
 
     // Store data
     array.push(bear_fvg_boxes, new_box)
@@ -201,8 +194,7 @@ if bearish_fvg_detected()
             style=label.style_label_down,
             color=bear_border_color,
             textcolor=color.white,
-            size=size.tiny
-        )
+            size=size.tiny)
 
 // ============================================================================
 // UPDATE FVGs (Extend & Check Fill Status)
@@ -400,22 +392,22 @@ plotshape(bearish_fvg_detected(), title="Bearish FVG Signal", location=location.
 //
 // BULLISH FVG:
 //   Candle 0    Candle 1    Candle 2
-//   ┌───┐                    ┌───┐
-//   │   │                    │ ▲ │
-//   │   │        ┌───┐       │   │
-//   │   │        │   │  ───► └───┘ Low[0]
-//   └───┘ High[2]│   │       ════════ ← FVG Zone
-//   ════════════ └───┘
+//   +---+                    +---+
+//   |   |                    | ^ |
+//   |   |        +---+       |   |
+//   |   |        |   |  ---> +---+ Low[0]
+//   +---+ High[2]|   |       ======== <- FVG Zone
+//   ============ +---+
 //   Gap = Low[0] - High[2]
 //
 // BEARISH FVG:
 //   Candle 0    Candle 1    Candle 2
-//   ┌───┐
-//   │   │                    ════════ ← FVG Zone
-//   │   │        ┌───┐       ┌───┐ High[0]
-//   │   │        │   │  ───► │   │
-//   └───┘ Low[2] │   │       │ ▼ │
-//   ════════════ └───┘       └───┘
+//   +---+
+//   |   |                    ======== <- FVG Zone
+//   |   |        +---+       +---+ High[0]
+//   |   |        |   |  ---> |   |
+//   +---+ Low[2] |   |       | v |
+//   ============ +---+       +---+
 //   Gap = Low[2] - High[0]
 //
 // Price cenderung kembali ke FVG untuk "fill the gap" sebelum

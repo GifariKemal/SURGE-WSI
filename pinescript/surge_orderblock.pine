@@ -2,7 +2,7 @@
 // SURGE-WSI Order Block Detector
 // ============================================================================
 //
-// Pine Script v5 - untuk TradingView
+// Pine Script v6 - untuk TradingView
 //
 // Logika ini sama persis dengan poi_detector.py di SURGE-WSI
 // Gunakan untuk verifikasi akurasi deteksi Order Block
@@ -10,7 +10,7 @@
 // Author: SURIOTA Team
 // ============================================================================
 
-//@version=5
+//@version=6
 indicator("SURGE-WSI Order Block", shorttitle="SURGE OB", overlay=true, max_boxes_count=500, max_labels_count=500)
 
 // ============================================================================
@@ -36,34 +36,30 @@ show_labels = input.bool(true, "Show Labels", group=grp_style)
 
 // Bullish Order Block Detection
 // Logika: Down candle (close < open) diikuti impulsive up move
-is_down_candle(idx) =>
+is_down_candle(int idx) =>
     close[idx] < open[idx]
 
-is_up_candle(idx) =>
+is_up_candle(int idx) =>
     close[idx] > open[idx]
 
-get_body_size(idx) =>
+get_body_size(int idx) =>
     math.abs(close[idx] - open[idx])
 
 // Bullish OB: candle down di [2], diikuti impulsive up di [1] dan [0]
 bullish_ob_detected() =>
-    // Candle at index 2 must be down (potential OB)
-    is_down_candle(2) and
-    // Followed by up candles (impulsive move)
-    is_up_candle(1) and
-    close > close[1] and
-    // Move size must be > 1.5x the OB body
-    (close - open[2]) > (get_body_size(2) * impulsive_ratio)
+    // Wrap entire condition in parentheses for multi-line
+    (is_down_candle(2) and
+     is_up_candle(1) and
+     close > close[1] and
+     (close - open[2]) > (get_body_size(2) * impulsive_ratio))
 
 // Bearish OB: candle up di [2], diikuti impulsive down di [1] dan [0]
 bearish_ob_detected() =>
-    // Candle at index 2 must be up (potential OB)
-    is_up_candle(2) and
-    // Followed by down candles (impulsive move)
-    is_down_candle(1) and
-    close < close[1] and
-    // Move size must be > 1.5x the OB body
-    (open[2] - close) > (get_body_size(2) * impulsive_ratio)
+    // Wrap entire condition in parentheses for multi-line
+    (is_up_candle(2) and
+     is_down_candle(1) and
+     close < close[1] and
+     (open[2] - close) > (get_body_size(2) * impulsive_ratio))
 
 // ============================================================================
 // ORDER BLOCK STORAGE & MANAGEMENT
@@ -100,8 +96,7 @@ if bullish_ob_detected()
         bgcolor=bull_ob_color,
         border_color=bull_border_color,
         border_width=1,
-        border_style=line.style_solid
-    )
+        border_style=line.style_solid)
 
     // Store data
     array.push(bull_ob_boxes, new_box)
@@ -119,8 +114,7 @@ if bullish_ob_detected()
             style=label.style_label_up,
             color=bull_border_color,
             textcolor=color.white,
-            size=size.tiny
-        )
+            size=size.tiny)
 
 // Detect and create Bearish OB
 if bearish_ob_detected()
@@ -137,8 +131,7 @@ if bearish_ob_detected()
         bgcolor=bear_ob_color,
         border_color=bear_border_color,
         border_width=1,
-        border_style=line.style_solid
-    )
+        border_style=line.style_solid)
 
     // Store data
     array.push(bear_ob_boxes, new_box)
@@ -156,8 +149,7 @@ if bearish_ob_detected()
             style=label.style_label_down,
             color=bear_border_color,
             textcolor=color.white,
-            size=size.tiny
-        )
+            size=size.tiny)
 
 // ============================================================================
 // UPDATE ORDER BLOCKS (Extend & Check Mitigation)
