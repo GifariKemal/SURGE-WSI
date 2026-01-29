@@ -1,5 +1,5 @@
 //@version=6
-indicator("SURGE-WSI FVG v2", shorttitle="SURGE-FVG", overlay=true, max_boxes_count=500, max_labels_count=500)
+indicator("SURGE FVG v2", shorttitle="S-FVG", overlay=true, max_boxes_count=500, max_labels_count=500)
 
 // ============================================================================
 // SURGE-WSI Fair Value Gap (FVG) Detector v2

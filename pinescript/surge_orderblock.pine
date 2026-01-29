@@ -1,5 +1,5 @@
 //@version=6
-indicator("SURGE-WSI Order Block v2", shorttitle="SURGE-OB2", overlay=true, max_boxes_count=500, max_labels_count=500)
+indicator("SURGE Order Block v2", shorttitle="S-OB", overlay=true, max_boxes_count=500, max_labels_count=500)
 
 // ============================================================================
 // SURGE-WSI Order Block Detector v2
