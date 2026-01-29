@@ -35,6 +35,8 @@ from src.trading.exit_manager import ExitManager
 from src.trading.trade_mode_manager import TradeModeManager, TradeMode, TradeModeConfig
 from src.utils.killzone import KillZone
 from src.utils.dynamic_activity_filter import DynamicActivityFilter, ActivityLevel
+from src.utils.choppiness_filter import ChoppinessFilter
+from src.utils.intelligent_activity_filter import IntelligentActivityFilter, MarketActivity
 
 
 class TradeStatus(Enum):
@@ -182,8 +184,12 @@ class Backtester:
         spread_pips: float = 1.5,
         use_killzone: bool = True,
         use_trend_filter: bool = True,  # Enable trend alignment filter
-        use_relaxed_filter: bool = True,  # NEW: Relax filters in low-activity periods
-        use_hybrid_mode: bool = True  # NEW: Enable Hybrid Mode (KZ + Dynamic Activity)
+        use_relaxed_filter: bool = False,  # DISABLED for Zero Losing Months strategy
+        use_hybrid_mode: bool = True,  # Enable Hybrid Mode (KZ + Dynamic Activity)
+        use_choppiness_filter: bool = True,  # NEW: Skip trading in choppy markets
+        choppiness_threshold: float = 61.8,  # CHOP > this = skip trading
+        use_intelligent_filter: bool = False,  # NEW: Intelligent Activity Filter (replaces KZ)
+        intelligent_threshold: float = 50.0  # Activity threshold for intelligent filter
     ):
         """Initialize backtester
 
@@ -196,6 +202,8 @@ class Backtester:
             spread_pips: Spread in pips
             use_killzone: Filter by kill zones
             use_hybrid_mode: Enable Hybrid Mode (trade in KZ OR when high activity)
+            use_intelligent_filter: Use Intelligent Activity Filter (replaces KZ)
+            intelligent_threshold: Activity threshold for intelligent filter (0-100)
         """
         self.symbol = symbol
         self.start_date = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -207,6 +215,10 @@ class Backtester:
         self.use_trend_filter = use_trend_filter
         self.use_relaxed_filter = use_relaxed_filter
         self.use_hybrid_mode = use_hybrid_mode
+        self.use_choppiness_filter = use_choppiness_filter
+        self.choppiness_threshold = choppiness_threshold
+        self.use_intelligent_filter = use_intelligent_filter
+        self.intelligent_threshold = intelligent_threshold
 
         # Regime stability settings
         self.min_regime_stability_bars = 5  # Regime must be stable for N bars
@@ -219,8 +231,14 @@ class Backtester:
         self.poi_detector = POIDetector()
         self.entry_trigger = EntryTrigger()
         self.risk_manager = RiskManager(
-            pip_value=pip_value
-            # Lot size calculated automatically based on risk %
+            pip_value=pip_value,
+            # Position size limits - ZERO LOSING MONTHS settings
+            min_lot_size=0.01,
+            max_lot_size=0.5,      # Conservative base for zero-loss strategy
+            min_sl_pips=15.0,      # Minimum 15 pips SL
+            max_sl_pips=50.0,      # Maximum 50 pips SL
+            max_loss_per_trade_pct=0.8,   # Max 0.8% loss per trade
+            monthly_loss_stop_pct=2.0     # Stop trading if monthly loss > 2%
         )
         self.exit_manager = ExitManager()
         self.killzone = KillZone()
@@ -236,6 +254,24 @@ class Backtester:
             pip_size=0.0001
         )
         self.activity_filter.outside_kz_min_score = 80.0  # Conservative threshold
+
+        # Choppiness Filter: Skip trading in choppy/ranging markets
+        self.choppiness_filter = ChoppinessFilter(
+            period=14,
+            choppy_threshold=choppiness_threshold,
+            trending_threshold=38.2,
+            pip_size=0.0001
+        )
+
+        # Intelligent Activity Filter: Replaces Kill Zone with velocity-based detection
+        self.intelligent_filter = IntelligentActivityFilter(
+            activity_threshold=intelligent_threshold,
+            min_velocity_pips=2.0,
+            min_atr_pips=5.0,
+            pip_size=0.0001
+        )
+        self._debug_intelligent_trades = 0  # Trades via intelligent filter
+        self._last_intelligent_result = None  # Track last intelligent filter result
 
         # State
         self.balance = initial_balance
@@ -266,6 +302,7 @@ class Backtester:
         self._current_is_hybrid = False  # Flag for current entry check
         self._debug_relaxed_entries = 0  # NEW: Entries with relaxed filters
         self._debug_signal_only = 0  # NEW: Trades in signal-only mode
+        self._debug_choppiness_filtered = 0  # NEW: Trades filtered by choppiness
 
         # Recent trade tracking for relaxed filter
         self._recent_trades: List[datetime] = []  # Track trade times
@@ -364,12 +401,35 @@ class Backtester:
                     self._process_htf_bar(htf.iloc[:htf_idx+1])
                     htf_idx += 1
 
-            # Check kill zone and hybrid mode
+            # Update Kalman filter
+            kalman_state = self.kalman.update(current_price)
+
+            # Check kill zone / intelligent filter
             in_kz, session = self.killzone.is_in_killzone(current_time)
             should_trade = False
             is_hybrid_entry = False
+            is_intelligent_entry = False
 
-            if self.use_killzone:
+            if self.use_intelligent_filter:
+                # Intelligent Activity Filter mode - replaces Kill Zone
+                # Update intelligent filter with Kalman velocity
+                self.intelligent_filter.update(current_high, current_low, current_price)
+                self.intelligent_filter.update_kalman_velocity(kalman_state['velocity'])
+
+                # Check activity
+                intel_result = self.intelligent_filter.check(
+                    current_time, current_high, current_low, current_price
+                )
+                self._last_intelligent_result = intel_result
+
+                if intel_result.should_trade:
+                    should_trade = True
+                    is_intelligent_entry = True
+                else:
+                    ltf_pos += 1
+                    continue
+
+            elif self.use_killzone:
                 if in_kz:
                     should_trade = True
                 elif self.use_hybrid_mode:
@@ -394,8 +454,9 @@ class Backtester:
 
             # Check for new entry (if no open position)
             if self.open_trade is None:
-                # Store hybrid entry flag for tracking
+                # Store entry flags for tracking
                 self._current_is_hybrid = is_hybrid_entry
+                self._current_is_intelligent = is_intelligent_entry
                 # Use positional index for slicing
                 ltf_window = ltf.iloc[max(0, ltf_pos-50):ltf_pos+1]
                 # Pass HTF data for trend filter (use current htf_idx)
@@ -509,6 +570,14 @@ class Backtester:
 
         self._debug_in_poi += 1
 
+        # Check choppiness filter - skip trading in choppy/ranging markets
+        if self.use_choppiness_filter and htf_window is not None and len(htf_window) >= 20:
+            should_skip, reason = self.choppiness_filter.should_skip_trading(htf_window)
+            if should_skip:
+                self._debug_choppiness_filtered += 1
+                logger.debug(f"Choppiness filter: {reason}")
+                return
+
         # Check trend alignment before entry
         if self.use_trend_filter and htf_window is not None and len(htf_window) >= 10:
             aligned, reason = self.market_filter.check_trend_alignment(htf_window, direction)
@@ -517,9 +586,15 @@ class Backtester:
                 logger.debug(f"Trend filter: {reason}")
                 return
 
-        # NEW: Determine if we should use relaxed entry filters
+        # Determine if we should use relaxed entry filters
+        # ZERO LOSING MONTHS: Use stricter quality (65+)
         require_full_confirmation = True
-        min_quality = 60.0
+        min_quality = 65.0
+
+        # Use adaptive quality from intelligent filter if enabled
+        if self.use_intelligent_filter and self._last_intelligent_result is not None:
+            min_quality = self._last_intelligent_result.quality_threshold
+            logger.debug(f"Intelligent filter adaptive quality: {min_quality}")
 
         if self.use_relaxed_filter:
             # Count recent trades in last 7 days
@@ -660,8 +735,11 @@ class Backtester:
             quality_score=quality_score
         )
 
-        # Track hybrid vs KZ trades
-        if hasattr(self, '_current_is_hybrid') and self._current_is_hybrid:
+        # Track entry source
+        if hasattr(self, '_current_is_intelligent') and self._current_is_intelligent:
+            self._debug_intelligent_trades += 1
+            logger.debug(f"Intelligent entry: {direction} @ {current_price:.5f}")
+        elif hasattr(self, '_current_is_hybrid') and self._current_is_hybrid:
             self._debug_hybrid_trades += 1
             logger.debug(f"Hybrid entry (outside KZ): {direction} @ {current_price:.5f}")
         else:
@@ -806,10 +884,12 @@ class Backtester:
                         f"poi_none={self._debug_poi_none}, sideways={self._debug_regime_sideways}, "
                         f"regime_unstable={self._debug_regime_unstable}, no_pois={self._debug_no_pois}, "
                         f"not_in_poi={self._debug_not_in_poi}, in_poi={self._debug_in_poi}, "
+                        f"choppiness_filtered={self._debug_choppiness_filtered}, "
                         f"entry_fail={self._debug_entry_fail}, entry_ok={self._debug_entry_ok}, "
                         f"trend_filtered={self._debug_trend_filtered}, relaxed_entries={self._debug_relaxed_entries}, "
                         f"signal_only={self._debug_signal_only}, "
-                        f"kz_trades={self._debug_kz_trades}, hybrid_trades={self._debug_hybrid_trades}")
+                        f"kz_trades={self._debug_kz_trades}, hybrid_trades={self._debug_hybrid_trades}, "
+                        f"intelligent_trades={self._debug_intelligent_trades}")
 
         if not self.trades:
             return result

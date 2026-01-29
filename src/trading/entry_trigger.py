@@ -133,8 +133,8 @@ class EntryTrigger:
         sweep_min_pips: float = 2.0,
         mss_lookback: int = 10,
         fvg_min_pips: float = 1.0,
-        min_quality_score: float = 60.0,
-        max_sl_pips: float = 50.0,
+        min_quality_score: float = 75.0,  # ZERO LOSING MONTHS: Higher quality (was 60)
+        max_sl_pips: float = 10.0,  # ZERO LOSING MONTHS: Max SL (was 50)
         rejection_wick_ratio: float = 0.5
     ):
         """Initialize Entry Trigger

@@ -1,0 +1,309 @@
+// ============================================================================
+// SURGE-WSI Order Block Detector
+// ============================================================================
+//
+// Pine Script v5 - untuk TradingView
+//
+// Logika ini sama persis dengan poi_detector.py di SURGE-WSI
+// Gunakan untuk verifikasi akurasi deteksi Order Block
+//
+// Author: SURIOTA Team
+// ============================================================================
+
+//@version=5
+indicator("SURGE-WSI Order Block", shorttitle="SURGE OB", overlay=true, max_boxes_count=500, max_labels_count=500)
+
+// ============================================================================
+// INPUT SETTINGS
+// ============================================================================
+grp_ob = "Order Block Settings"
+impulsive_ratio = input.float(1.5, "Impulsive Ratio", minval=1.0, maxval=5.0, step=0.1, group=grp_ob, tooltip="Minimum ratio of impulse move to OB body (default: 1.5x)")
+max_ob_age = input.int(50, "Max OB Age (bars)", minval=10, maxval=200, group=grp_ob, tooltip="Order Block older than this will be removed")
+show_mitigated = input.bool(true, "Show Mitigated OB", group=grp_ob, tooltip="Show order blocks that have been mitigated")
+extend_ob = input.bool(true, "Extend OB to Current Bar", group=grp_ob, tooltip="Extend OB box to current bar")
+
+grp_style = "Style Settings"
+bull_ob_color = input.color(color.new(color.green, 80), "Bullish OB Color", group=grp_style)
+bear_ob_color = input.color(color.new(color.red, 80), "Bearish OB Color", group=grp_style)
+bull_border_color = input.color(color.green, "Bullish Border", group=grp_style)
+bear_border_color = input.color(color.red, "Bearish Border", group=grp_style)
+mitigated_color = input.color(color.new(color.gray, 85), "Mitigated OB Color", group=grp_style)
+show_labels = input.bool(true, "Show Labels", group=grp_style)
+
+// ============================================================================
+// ORDER BLOCK DETECTION LOGIC (sama dengan poi_detector.py)
+// ============================================================================
+
+// Bullish Order Block Detection
+// Logika: Down candle (close < open) diikuti impulsive up move
+is_down_candle(idx) =>
+    close[idx] < open[idx]
+
+is_up_candle(idx) =>
+    close[idx] > open[idx]
+
+get_body_size(idx) =>
+    math.abs(close[idx] - open[idx])
+
+// Bullish OB: candle down di [2], diikuti impulsive up di [1] dan [0]
+bullish_ob_detected() =>
+    // Candle at index 2 must be down (potential OB)
+    is_down_candle(2) and
+    // Followed by up candles (impulsive move)
+    is_up_candle(1) and
+    close > close[1] and
+    // Move size must be > 1.5x the OB body
+    (close - open[2]) > (get_body_size(2) * impulsive_ratio)
+
+// Bearish OB: candle up di [2], diikuti impulsive down di [1] dan [0]
+bearish_ob_detected() =>
+    // Candle at index 2 must be up (potential OB)
+    is_up_candle(2) and
+    // Followed by down candles (impulsive move)
+    is_down_candle(1) and
+    close < close[1] and
+    // Move size must be > 1.5x the OB body
+    (open[2] - close) > (get_body_size(2) * impulsive_ratio)
+
+// ============================================================================
+// ORDER BLOCK STORAGE & MANAGEMENT
+// ============================================================================
+
+// Arrays to store OB data
+var box[] bull_ob_boxes = array.new_box()
+var box[] bear_ob_boxes = array.new_box()
+var float[] bull_ob_tops = array.new_float()
+var float[] bull_ob_bottoms = array.new_float()
+var float[] bear_ob_tops = array.new_float()
+var float[] bear_ob_bottoms = array.new_float()
+var int[] bull_ob_bars = array.new_int()
+var int[] bear_ob_bars = array.new_int()
+var bool[] bull_ob_mitigated = array.new_bool()
+var bool[] bear_ob_mitigated = array.new_bool()
+
+// ============================================================================
+// CREATE NEW ORDER BLOCKS
+// ============================================================================
+
+// Detect and create Bullish OB
+if bullish_ob_detected()
+    ob_top = open[2]
+    ob_bottom = low[2]
+    ob_bar = bar_index - 2
+
+    // Create box
+    new_box = box.new(
+        left=ob_bar,
+        top=ob_top,
+        right=extend_ob ? bar_index + 10 : ob_bar + max_ob_age,
+        bottom=ob_bottom,
+        bgcolor=bull_ob_color,
+        border_color=bull_border_color,
+        border_width=1,
+        border_style=line.style_solid
+    )
+
+    // Store data
+    array.push(bull_ob_boxes, new_box)
+    array.push(bull_ob_tops, ob_top)
+    array.push(bull_ob_bottoms, ob_bottom)
+    array.push(bull_ob_bars, ob_bar)
+    array.push(bull_ob_mitigated, false)
+
+    // Add label
+    if show_labels
+        label.new(
+            x=ob_bar,
+            y=ob_bottom,
+            text="Bull OB",
+            style=label.style_label_up,
+            color=bull_border_color,
+            textcolor=color.white,
+            size=size.tiny
+        )
+
+// Detect and create Bearish OB
+if bearish_ob_detected()
+    ob_top = high[2]
+    ob_bottom = open[2]
+    ob_bar = bar_index - 2
+
+    // Create box
+    new_box = box.new(
+        left=ob_bar,
+        top=ob_top,
+        right=extend_ob ? bar_index + 10 : ob_bar + max_ob_age,
+        bottom=ob_bottom,
+        bgcolor=bear_ob_color,
+        border_color=bear_border_color,
+        border_width=1,
+        border_style=line.style_solid
+    )
+
+    // Store data
+    array.push(bear_ob_boxes, new_box)
+    array.push(bear_ob_tops, ob_top)
+    array.push(bear_ob_bottoms, ob_bottom)
+    array.push(bear_ob_bars, ob_bar)
+    array.push(bear_ob_mitigated, false)
+
+    // Add label
+    if show_labels
+        label.new(
+            x=ob_bar,
+            y=ob_top,
+            text="Bear OB",
+            style=label.style_label_down,
+            color=bear_border_color,
+            textcolor=color.white,
+            size=size.tiny
+        )
+
+// ============================================================================
+// UPDATE ORDER BLOCKS (Extend & Check Mitigation)
+// ============================================================================
+
+// Update Bullish OBs
+if array.size(bull_ob_boxes) > 0
+    for i = array.size(bull_ob_boxes) - 1 to 0
+        ob_box = array.get(bull_ob_boxes, i)
+        ob_top = array.get(bull_ob_tops, i)
+        ob_bottom = array.get(bull_ob_bottoms, i)
+        ob_bar = array.get(bull_ob_bars, i)
+        is_mitigated = array.get(bull_ob_mitigated, i)
+
+        // Check age - remove if too old
+        if bar_index - ob_bar > max_ob_age
+            box.delete(ob_box)
+            array.remove(bull_ob_boxes, i)
+            array.remove(bull_ob_tops, i)
+            array.remove(bull_ob_bottoms, i)
+            array.remove(bull_ob_bars, i)
+            array.remove(bull_ob_mitigated, i)
+            continue
+
+        // Check mitigation (price goes below OB)
+        if not is_mitigated and low < ob_bottom
+            array.set(bull_ob_mitigated, i, true)
+            if show_mitigated
+                box.set_bgcolor(ob_box, mitigated_color)
+                box.set_border_color(ob_box, color.gray)
+                box.set_border_style(ob_box, line.style_dashed)
+            else
+                box.delete(ob_box)
+                array.remove(bull_ob_boxes, i)
+                array.remove(bull_ob_tops, i)
+                array.remove(bull_ob_bottoms, i)
+                array.remove(bull_ob_bars, i)
+                array.remove(bull_ob_mitigated, i)
+                continue
+
+        // Extend box to current bar
+        if extend_ob and not array.get(bull_ob_mitigated, i)
+            box.set_right(ob_box, bar_index + 10)
+
+// Update Bearish OBs
+if array.size(bear_ob_boxes) > 0
+    for i = array.size(bear_ob_boxes) - 1 to 0
+        ob_box = array.get(bear_ob_boxes, i)
+        ob_top = array.get(bear_ob_tops, i)
+        ob_bottom = array.get(bear_ob_bottoms, i)
+        ob_bar = array.get(bear_ob_bars, i)
+        is_mitigated = array.get(bear_ob_mitigated, i)
+
+        // Check age - remove if too old
+        if bar_index - ob_bar > max_ob_age
+            box.delete(ob_box)
+            array.remove(bear_ob_boxes, i)
+            array.remove(bear_ob_tops, i)
+            array.remove(bear_ob_bottoms, i)
+            array.remove(bear_ob_bars, i)
+            array.remove(bear_ob_mitigated, i)
+            continue
+
+        // Check mitigation (price goes above OB)
+        if not is_mitigated and high > ob_top
+            array.set(bear_ob_mitigated, i, true)
+            if show_mitigated
+                box.set_bgcolor(ob_box, mitigated_color)
+                box.set_border_color(ob_box, color.gray)
+                box.set_border_style(ob_box, line.style_dashed)
+            else
+                box.delete(ob_box)
+                array.remove(bear_ob_boxes, i)
+                array.remove(bear_ob_tops, i)
+                array.remove(bear_ob_bottoms, i)
+                array.remove(bear_ob_bars, i)
+                array.remove(bear_ob_mitigated, i)
+                continue
+
+        // Extend box to current bar
+        if extend_ob and not array.get(bear_ob_mitigated, i)
+            box.set_right(ob_box, bar_index + 10)
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+
+// Alert when price enters active Bullish OB (potential BUY zone)
+price_in_bull_ob = false
+if array.size(bull_ob_boxes) > 0
+    for i = 0 to array.size(bull_ob_boxes) - 1
+        if not array.get(bull_ob_mitigated, i)
+            ob_top = array.get(bull_ob_tops, i)
+            ob_bottom = array.get(bull_ob_bottoms, i)
+            if low <= ob_top and high >= ob_bottom
+                price_in_bull_ob := true
+                break
+
+// Alert when price enters active Bearish OB (potential SELL zone)
+price_in_bear_ob = false
+if array.size(bear_ob_boxes) > 0
+    for i = 0 to array.size(bear_ob_boxes) - 1
+        if not array.get(bear_ob_mitigated, i)
+            ob_top = array.get(bear_ob_tops, i)
+            ob_bottom = array.get(bear_ob_bottoms, i)
+            if low <= ob_top and high >= ob_bottom
+                price_in_bear_ob := true
+                break
+
+alertcondition(price_in_bull_ob, title="Price at Bullish OB", message="SURGE-WSI: Price entered Bullish Order Block - Potential BUY zone")
+alertcondition(price_in_bear_ob, title="Price at Bearish OB", message="SURGE-WSI: Price entered Bearish Order Block - Potential SELL zone")
+alertcondition(bullish_ob_detected(), title="New Bullish OB", message="SURGE-WSI: New Bullish Order Block detected")
+alertcondition(bearish_ob_detected(), title="New Bearish OB", message="SURGE-WSI: New Bearish Order Block detected")
+
+// ============================================================================
+// INFO TABLE
+// ============================================================================
+
+var table info_table = table.new(position.top_right, 2, 5, bgcolor=color.new(color.black, 80), border_width=1)
+
+if barstate.islast
+    active_bull_count = 0
+    active_bear_count = 0
+
+    for i = 0 to array.size(bull_ob_mitigated) - 1
+        if not array.get(bull_ob_mitigated, i)
+            active_bull_count += 1
+
+    for i = 0 to array.size(bear_ob_mitigated) - 1
+        if not array.get(bear_ob_mitigated, i)
+            active_bear_count += 1
+
+    table.cell(info_table, 0, 0, "SURGE-WSI OB", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 0, "", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 0, 1, "Active Bull OB:", text_color=color.green, text_size=size.tiny)
+    table.cell(info_table, 1, 1, str.tostring(active_bull_count), text_color=color.green, text_size=size.tiny)
+    table.cell(info_table, 0, 2, "Active Bear OB:", text_color=color.red, text_size=size.tiny)
+    table.cell(info_table, 1, 2, str.tostring(active_bear_count), text_color=color.red, text_size=size.tiny)
+    table.cell(info_table, 0, 3, "Impulse Ratio:", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 1, 3, str.tostring(impulsive_ratio) + "x", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 0, 4, "Max Age:", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 1, 4, str.tostring(max_ob_age) + " bars", text_color=color.gray, text_size=size.tiny)
+
+// ============================================================================
+// PLOT SIGNALS (optional visual)
+// ============================================================================
+
+plotshape(bullish_ob_detected(), title="Bullish OB Signal", location=location.belowbar, style=shape.triangleup, size=size.tiny, color=color.green)
+plotshape(bearish_ob_detected(), title="Bearish OB Signal", location=location.abovebar, style=shape.triangledown, size=size.tiny, color=color.red)

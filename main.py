@@ -110,11 +110,11 @@ class SurgeWSI:
             symbol=config.trading.symbol,
             timeframe_htf=config.trading.timeframe_htf,
             timeframe_ltf=config.trading.timeframe_ltf,
-            warmup_bars=100,
+            warmup_bars=1000,  # Increased from 100 for better analysis
             magic_number=config.trading.magic_number
         )
 
-        # Set executor risk params
+        # Set executor risk params - ZERO LOSING MONTHS CONFIG
         self.executor.risk_manager.high_quality_threshold = config.risk.high_quality_threshold
         self.executor.risk_manager.high_quality_risk = config.risk.high_quality_risk
         self.executor.risk_manager.medium_quality_threshold = config.risk.medium_quality_threshold
@@ -122,6 +122,11 @@ class SurgeWSI:
         self.executor.risk_manager.low_quality_risk = config.risk.low_quality_risk
         self.executor.risk_manager.daily_profit_target = config.risk.daily_profit_target
         self.executor.risk_manager.daily_loss_limit = config.risk.daily_loss_limit
+        self.executor.risk_manager.max_lot_size = config.risk.max_lot_size
+        self.executor.risk_manager.min_sl_pips = config.risk.min_sl_pips
+        self.executor.risk_manager.max_sl_pips = config.risk.max_sl_pips
+        self.executor.risk_manager.max_loss_per_trade_pct = config.risk.max_loss_per_trade_pct
+        self.executor.risk_manager.monthly_loss_stop_pct = config.risk.monthly_loss_stop_pct
 
         # Set exit manager params
         self.executor.exit_manager.tp1_rr = config.exit.tp1_rr
@@ -157,8 +162,11 @@ class SurgeWSI:
             if await self.db.connect():
                 await self.db.initialize_tables()
                 self._db_connected = True
-                # Auto sync initial data
-                await self._auto_sync_database()
+                # Auto sync initial data (separate try-except to not crash if sync fails)
+                try:
+                    await self._auto_sync_database()
+                except Exception as sync_err:
+                    logger.warning(f"Database sync failed (non-critical): {sync_err}")
         except Exception as e:
             logger.warning(f"Database not available: {e}")
 
@@ -251,6 +259,7 @@ class SurgeWSI:
         self.telegram.on_positions = self._telegram_positions
         self.telegram.on_regime = self._telegram_regime
         self.telegram.on_pois = self._telegram_pois
+        self.telegram.on_activity = self._telegram_activity
         self.telegram.on_pause = self._telegram_pause
         self.telegram.on_resume = self._telegram_resume
         self.telegram.on_close_all = self._telegram_close_all
@@ -304,26 +313,48 @@ class SurgeWSI:
 
         self._last_hourly_status = now
 
-        # Gather status info
-        in_kz, session = self.executor.is_in_killzone()
-        regime_info = self.executor.regime_detector.last_info
-        daily_stats = self.executor.risk_manager.get_daily_stats()
+        try:
+            # Gather status info (with safe access)
+            in_kz, session = self.executor.is_in_killzone()
+            regime_info = self.executor.regime_detector.last_info
+            daily_stats = self.executor.risk_manager.get_daily_stats() if hasattr(self.executor.risk_manager, 'get_daily_stats') else {'pnl': 0, 'trades': 0}
 
-        # Build message
-        msg = TF.header(f"Hourly Status - {now.strftime('%H:%M')} UTC", TF.CLOCK)
-        msg += TF.spacer()
-        msg += TF.item("Price", f"{price:.5f}")
-        msg += TF.item("Session", session if in_kz else "Outside KZ")
-        msg += TF.item("Regime", regime_info.regime.value if regime_info else "N/A")
-        msg += TF.item("Bias", regime_info.bias if regime_info else "N/A")
-        msg += TF.spacer()
-        msg += TF.item("Balance", f"${account.get('balance', 0):,.2f}")
-        msg += TF.item("Equity", f"${account.get('equity', 0):,.2f}")
-        msg += TF.item("Daily P/L", f"${daily_stats['pnl']:+.2f}")
-        msg += TF.item("Trades Today", daily_stats['trades'], last=True)
+            # Get intelligent filter status (may be None before first tick)
+            intel_result = getattr(self.executor, '_last_intelligent_result', None)
+            use_intel = getattr(self.executor, 'use_intelligent_filter', False)
 
-        await self.telegram.send(msg)
-        logger.debug(f"Hourly status sent to Telegram")
+            # Build message
+            msg = TF.header(f"Hourly Status - {now.strftime('%H:%M')} UTC", TF.CLOCK)
+            msg += TF.spacer()
+            msg += TF.item("Price", f"{price:.5f}")
+
+            # Show intelligent filter status or Kill Zone
+            if use_intel and intel_result is not None:
+                activity_emoji = intel_result.get_emoji()
+                msg += TF.item("Activity", f"{activity_emoji} {intel_result.activity.value.upper()} ({intel_result.score:.0f}/100)")
+                msg += TF.item("Can Trade", "YES ✅" if intel_result.should_trade else "NO ⏸️")
+            else:
+                msg += TF.item("Session", session if in_kz else "Outside KZ")
+                msg += TF.item("Kill Zone", "Yes" if in_kz else "No")
+                if use_intel:
+                    msg += TF.item("Activity", "⏳ Warming up...")
+
+            msg += TF.item("Regime", regime_info.regime.value if regime_info else "N/A")
+            msg += TF.item("Bias", regime_info.bias if regime_info else "N/A")
+            msg += TF.spacer()
+            msg += TF.item("Balance", f"${account.get('balance', 0):,.2f}")
+            msg += TF.item("Equity", f"${account.get('equity', 0):,.2f}")
+            msg += TF.item("Daily P/L", f"${daily_stats.get('pnl', 0):+.2f}")
+            msg += TF.item("Trades Today", daily_stats.get('trades', 0), last=True)
+
+            # Add mode indicator
+            if use_intel:
+                msg += "\n🧠 <i>Mode: INTEL_60</i>"
+
+            await self.telegram.send(msg)
+            logger.debug(f"Hourly status sent to Telegram")
+        except Exception as e:
+            logger.warning(f"Failed to send hourly status: {e}")
 
     # Telegram command handlers
     async def _telegram_status(self):
@@ -382,6 +413,38 @@ class SurgeWSI:
         bear = poi_result.bearish_pois
         msg += TF.item("Bullish POIs", len(bull))
         msg += TF.item("Bearish POIs", len(bear), last=True)
+        return msg
+
+    async def _telegram_activity(self):
+        """Check intelligent activity filter status"""
+        intel_result = self.executor._last_intelligent_result
+        use_intel = self.executor.use_intelligent_filter
+
+        if not use_intel:
+            return "Intelligent Filter is DISABLED\nUsing Kill Zone mode instead."
+
+        if not intel_result:
+            return "Activity data not available yet.\nWaiting for first tick..."
+
+        emoji = intel_result.get_emoji()
+        msg = TF.header("Intelligent Activity Filter", "🧠")
+        msg += TF.spacer()
+        msg += TF.item("Mode", "INTEL_60")
+        msg += TF.item("Activity", f"{emoji} {intel_result.activity.value.upper()}")
+        msg += TF.item("Score", f"{intel_result.score:.0f}/100")
+        msg += TF.item("Should Trade", "YES ✅" if intel_result.should_trade else "NO ⏸️")
+        msg += TF.spacer()
+        msg += TF.item("Velocity", f"{intel_result.velocity:.2f} pips/bar ({intel_result.velocity_score:.0f}/30)")
+        msg += TF.item("ATR", f"{intel_result.atr_pips:.1f} pips ({intel_result.atr_score:.0f}/30)")
+        msg += TF.item("Range", f"{intel_result.range_pips:.1f} pips ({intel_result.range_score:.0f}/20)")
+        msg += TF.item("Momentum", f"{intel_result.momentum:.1f} pips ({intel_result.momentum_score:.0f}/20)")
+        msg += TF.spacer()
+        msg += TF.item("Quality Threshold", f"{intel_result.quality_threshold:.0f}")
+        msg += TF.item("Lot Multiplier", f"{intel_result.lot_multiplier:.1f}x", last=True)
+
+        if not intel_result.should_trade:
+            msg += f"\n\n⏳ <i>Reason: {intel_result.reason}</i>"
+
         return msg
 
     async def _telegram_pause(self):
@@ -513,19 +576,24 @@ class SurgeWSI:
         return msg
 
     async def warmup(self):
-        """Warmup with historical data"""
+        """Warmup with historical data
+
+        Increased bars for optimal performance:
+        - HTF (H4): 500 bars = ~83 days for better POI/swing detection
+        - LTF (M5): 1000 bars = ~3.5 days for better Kalman/velocity smoothing
+        """
         logger.info("Starting warmup...")
 
         htf_data = self.mt5.get_ohlcv(
             config.trading.symbol,
             config.trading.timeframe_htf,
-            200
+            500  # Increased from 200 for better POI detection
         )
 
         ltf_data = self.mt5.get_ohlcv(
             config.trading.symbol,
             config.trading.timeframe_ltf,
-            500
+            1000  # Increased from 500 for better velocity/momentum
         )
 
         if htf_data is None or ltf_data is None:
@@ -547,19 +615,27 @@ class SurgeWSI:
             is_open, market_msg = self.killzone.is_market_open()
             in_kz, session = self.killzone.is_in_killzone()
 
+            # Check if using intelligent filter
+            use_intel = self.executor.use_intelligent_filter
+
             msg = TF.header("SURGE-WSI Started", TF.ROCKET)
             msg += TF.spacer()
             msg += TF.item("Mode", self.mode.upper())
             msg += TF.item("Symbol", config.trading.symbol)
             msg += TF.item("Market", market_msg)
-            msg += TF.item("Session", session)
-            msg += TF.item("Kill Zone", "Yes" if in_kz else "No")
+
+            if use_intel:
+                msg += TF.item("Filter", "🧠 INTEL_60 (Intelligent Activity)")
+            else:
+                msg += TF.item("Session", session)
+                msg += TF.item("Kill Zone", "Yes" if in_kz else "No")
+
             autotrading_status = "ENABLED" if self.autotrading_enabled else "DISABLED"
             msg += TF.item("AutoTrading", autotrading_status, last=True)
             msg += TF.spacer()
             if not self.autotrading_enabled:
-                msg += "WARNING: Enable AutoTrading in MT5!\n\n"
-            msg += "Commands:\n/status /balance /positions\n/test_buy /test_sell /autotrading"
+                msg += "⚠️ Enable AutoTrading in MT5!\n\n"
+            msg += "Commands:\n/status /balance /activity\n/test_buy /test_sell /autotrading"
 
             await self.telegram.send(msg)
             # Start polling for commands

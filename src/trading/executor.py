@@ -26,6 +26,8 @@ from .risk_manager import RiskManager
 from .exit_manager import ExitManager, PositionState
 from .trade_mode_manager import TradeModeManager, TradeMode, TradeModeConfig
 from ..analysis.market_filter import MarketFilter, RelaxedEntryFilter
+from .adaptive_risk import AdaptiveRiskManager, calculate_atr
+from ..utils.intelligent_activity_filter import IntelligentActivityFilter, MarketActivity
 
 
 class ExecutorState(Enum):
@@ -116,8 +118,18 @@ class TradeExecutor:
         self.kalman = MultiScaleKalman()
         self.regime_detector = HMMRegimeDetector()
         self.poi_detector = POIDetector()
-        self.entry_trigger = EntryTrigger()
-        self.risk_manager = RiskManager()
+        # ZERO LOSING MONTHS CONFIGURATION
+        self.entry_trigger = EntryTrigger(
+            min_quality_score=75.0,        # ZERO LOSING MONTHS: Higher quality threshold
+            max_sl_pips=10.0               # ZERO LOSING MONTHS: Max SL 10 pips
+        )
+        self.risk_manager = RiskManager(
+            max_lot_size=0.5,              # Zero Losing Months config
+            daily_loss_limit=80.0,         # Stricter daily limit
+            max_sl_pips=10.0,              # ZERO LOSING MONTHS: Max SL 10 pips
+            max_loss_per_trade_pct=0.1,    # ZERO LOSING MONTHS: Cap max loss at 0.1%
+            monthly_loss_stop_pct=2.0      # Stop at 2% monthly loss
+        )
         self.exit_manager = ExitManager()
         self.trade_mode_manager = TradeModeManager()
 
@@ -131,13 +143,51 @@ class TradeExecutor:
             lookback_bars=20
         )
 
-        # Relaxed Entry Filter - Relax filters during low activity periods
+        # Relaxed Entry Filter - DISABLED for Zero Losing Months strategy
+        # Stricter quality control produces better results
         self.relaxed_filter = RelaxedEntryFilter(
-            min_quality_normal=60.0,
-            min_quality_relaxed=50.0,
+            min_quality_normal=65.0,       # Higher base quality
+            min_quality_relaxed=60.0,      # Still require decent quality
             require_full_confirmation_normal=True,
-            require_full_confirmation_relaxed=False
+            require_full_confirmation_relaxed=True  # Always require full confirmation
         )
+        self.use_relaxed_filter = False  # DISABLED for zero-loss strategy
+
+        # ZERO LOSING MONTHS: Adaptive Risk Manager Configuration
+        # Optimized settings: SL10 + Quality75 + Loss0.1%
+        self.adaptive_risk = AdaptiveRiskManager(
+            base_max_lot=0.5,              # Conservative base for zero-loss
+            base_min_sl=15.0,
+            base_max_sl=10.0,              # ZERO LOSING MONTHS: Max SL 10 pips
+            base_risk_percent=0.008,       # 0.8% max risk per trade
+            max_loss_per_trade_pct=0.1,    # ZERO LOSING MONTHS: Cap max loss at 0.1%
+            low_volatility_atr=12.0,       # ATR < 12 = reduce exposure
+            high_volatility_atr=40.0,      # ATR > 40 = reduce exposure
+            extreme_volatility_atr=55.0,   # ATR > 55 = heavily reduce
+            consecutive_loss_threshold=2,  # Stricter: 2 losses = reduce
+            drawdown_threshold=0.08,       # Stricter: 8% DD = reduce
+            december_max_lot=0.01,         # Skip December (anomaly)
+            december_min_quality=99.0      # Essentially skip December
+        )
+        self.use_adaptive_risk = True  # Enable by default
+
+        # December skip flag (Zero Losing Months)
+        self.skip_december = True
+
+        # INTELLIGENT ACTIVITY FILTER - Replaces Kill Zone
+        # Using INTEL_60 configuration (best from backtest: 72% WR, 2 losing months)
+        self.use_intelligent_filter = True  # Enable intelligent filter
+        self.intelligent_filter = IntelligentActivityFilter(
+            activity_threshold=60.0,      # INTEL_60 threshold
+            min_velocity_pips=2.0,        # Minimum velocity to consider active
+            min_atr_pips=5.0,             # Minimum ATR
+            pip_size=0.0001
+        )
+        self._last_intelligent_result = None
+        self._last_activity = None  # For status display (same as _last_intelligent_result)
+
+        # Status notification interval (configurable)
+        self.status_interval_seconds = 1800  # 30 minutes default
 
         # Track recent trades for relaxed filter
         self._recent_trades: List[datetime] = []
@@ -159,6 +209,8 @@ class TradeExecutor:
         self._prev_bear_pois: int = 0
         self._prev_at_poi: bool = False
         self._last_status_time: Optional[datetime] = None
+        self._last_risk_warning_time: Optional[datetime] = None
+        self._risk_warning_cooldown = 3600  # Send warning at most every hour
 
         # MT5/MCP callbacks
         self.get_account_info: Optional[Callable] = None
@@ -325,23 +377,28 @@ class TradeExecutor:
             await self.send_telegram(msg)
 
     async def _send_periodic_status(self, price: float, regime_info, bull_pois: int, bear_pois: int):
-        """Send periodic status update every 30 minutes"""
+        """Send periodic status update (configurable interval)"""
         if not self.send_telegram:
             return
 
         now = datetime.now(timezone.utc)
 
-        # Send status every 30 minutes
-        if self._last_status_time is None or (now - self._last_status_time).total_seconds() >= 1800:
+        # Send status at configurable interval (default 30 minutes)
+        if self._last_status_time is None or (now - self._last_status_time).total_seconds() >= self.status_interval_seconds:
             in_kz, session = self.is_in_killzone()
             regime = regime_info.regime.value if regime_info else "N/A"
             bias = regime_info.bias if regime_info else "N/A"
 
-            # Activity info
+            # Activity info - with safe access
             activity = self._last_activity
-            activity_emoji = activity.get_emoji() if activity else "⚪"
-            activity_score = f"{activity.score:.0f}" if activity else "N/A"
-            activity_level = activity.level.value.upper() if activity else "N/A"
+            if activity is not None:
+                activity_emoji = activity.get_emoji()
+                activity_score = f"{activity.score:.0f}"
+                activity_level = activity.activity.value.upper()  # Fixed: was .level, should be .activity
+            else:
+                activity_emoji = "⚪"
+                activity_score = "N/A"
+                activity_level = "N/A"
 
             msg = f"📊 <b>Status Update</b>\n\n"
             msg += f"├ Price: {price:.5f}\n"
@@ -353,19 +410,20 @@ class TradeExecutor:
             msg += f"├ Bullish POIs: {bull_pois}\n"
             msg += f"└ Bearish POIs: {bear_pois}\n"
 
-            # Hybrid mode status
-            if self.hybrid_mode_enabled:
-                msg += "\n🔄 <b>Hybrid Mode:</b> Active\n"
-                if in_kz:
-                    msg += f"├ In Kill Zone ({session})\n"
-                elif activity and activity.level == ActivityLevel.HIGH:
-                    msg += f"├ High activity outside KZ\n"
-                else:
-                    msg += f"├ Waiting for KZ or high activity\n"
+            # Intelligent filter mode status
+            if self.use_intelligent_filter:
+                msg += "\n🧠 <b>Intelligent Filter:</b> Active (INTEL_60)\n"
+                if activity is not None:
+                    if activity.should_trade:
+                        msg += f"├ Market: {activity.activity.value.upper()} ✅\n"
+                        msg += f"└ Quality threshold: {activity.quality_threshold:.0f}\n"
+                    else:
+                        msg += f"├ Market: {activity.activity.value.upper()} ⏸️\n"
+                        msg += f"└ Waiting for activity...\n"
 
-            # Waiting status (Conservative: only HIGH activity outside KZ)
-            if not in_kz and (not activity or activity.level != ActivityLevel.HIGH or activity.score < 80):
-                msg += "\n⏳ <i>Waiting for Kill Zone or exceptional activity...</i>"
+            # Waiting status
+            if activity is not None and not activity.should_trade:
+                msg += "\n⏳ <i>Waiting for market activity...</i>"
             elif bias == "SELL" and bear_pois == 0:
                 msg += "\n⏳ <i>Waiting for Bearish POI...</i>"
             elif bias == "BUY" and bull_pois == 0:
@@ -373,6 +431,34 @@ class TradeExecutor:
 
             await self.send_telegram(msg)
             self._last_status_time = now
+
+    async def _send_risk_warnings(self):
+        """Check and send risk warning notifications"""
+        if not self.send_telegram:
+            return
+
+        now = datetime.now(timezone.utc)
+
+        # Cooldown check - don't spam warnings
+        if self._last_risk_warning_time is not None:
+            time_since = (now - self._last_risk_warning_time).total_seconds()
+            if time_since < self._risk_warning_cooldown:
+                return
+
+        # Get warnings from risk manager
+        warnings = self.risk_manager.check_risk_warnings()
+
+        if warnings["has_warning"]:
+            msg = "⚠️ <b>RISK WARNING</b>\n\n"
+            for warning_msg in warnings["messages"]:
+                msg += f"{warning_msg}\n"
+
+            if warnings["risk_reduced"]:
+                msg += "\n<i>Position sizes automatically reduced</i>"
+
+            await self.send_telegram(msg)
+            self._last_risk_warning_time = now
+            logger.warning(f"Risk warning sent: {warnings['messages']}")
 
     async def process_tick(
         self,
@@ -401,15 +487,63 @@ class TradeExecutor:
         # Check existing positions
         await self._manage_positions(price)
 
-        # Check if can trade
-        can_trade, reason = self.risk_manager.can_open_trade()
+        # Check and send risk warnings (approaching limits)
+        await self._send_risk_warnings()
+
+        # Check if can trade (includes December skip and monthly limit)
+        now = datetime.now(timezone.utc)
+        can_trade, reason = self.risk_manager.can_open_trade(current_time=now)
         if not can_trade:
+            logger.debug(f"Cannot trade: {reason}")
             return None
 
-        # Check Kill Zone - Only trade during KZ (backtest shows best performance)
-        in_kz, session = self.is_in_killzone()
-        if not in_kz:
+        # Additional December check (Zero Losing Months)
+        if self.skip_december and now.month == 12:
+            logger.debug("December trading disabled (Zero Losing Months)")
             return None
+
+        # INTELLIGENT ACTIVITY FILTER - Replaces fixed Kill Zone
+        # Uses Kalman velocity, ATR, and momentum to detect market activity
+        if self.use_intelligent_filter:
+            try:
+                # Get current price data for filter
+                tick_data = await self.get_tick(self.symbol) if self.get_tick else None
+                current_high = tick_data.get('high', price) if tick_data else price
+                current_low = tick_data.get('low', price) if tick_data else price
+
+                # Update intelligent filter with Kalman velocity
+                self.intelligent_filter.update(current_high, current_low, price)
+                self.intelligent_filter.update_kalman_velocity(kalman_state['velocity'])
+
+                # Check activity
+                intel_result = self.intelligent_filter.check(now, current_high, current_low, price)
+
+                # Validate result
+                if intel_result is None:
+                    logger.warning("Intelligent filter returned None, falling back to Kill Zone")
+                    in_kz, session = self.is_in_killzone()
+                    if not in_kz:
+                        return None
+                else:
+                    self._last_intelligent_result = intel_result
+                    self._last_activity = intel_result  # Store for status display
+
+                    if not intel_result.should_trade:
+                        logger.debug(f"Intelligent filter: {intel_result.reason}")
+                        return None
+
+                    logger.debug(f"Intelligent filter: ACTIVE ({intel_result.activity.value}, score={intel_result.score:.0f})")
+            except Exception as e:
+                # Fallback to Kill Zone on error
+                logger.warning(f"Intelligent filter error: {e}, falling back to Kill Zone")
+                in_kz, session = self.is_in_killzone()
+                if not in_kz:
+                    return None
+        else:
+            # Fallback to Kill Zone (legacy mode)
+            in_kz, session = self.is_in_killzone()
+            if not in_kz:
+                return None
 
         # Check cooldown
         if self.is_cooldown_active():
@@ -489,6 +623,13 @@ class TradeExecutor:
             lookback_days=7
         )
 
+        # Use adaptive quality from intelligent filter if available
+        if self.use_intelligent_filter and self._last_intelligent_result is not None:
+            # Intelligent filter provides adaptive quality based on market activity
+            adaptive_quality = self._last_intelligent_result.quality_threshold
+            min_quality = max(min_quality, adaptive_quality)  # Use higher of the two
+            logger.debug(f"Intelligent filter adaptive quality: {adaptive_quality} -> using {min_quality}")
+
         # Temporarily adjust entry trigger's min_quality_score
         original_min_quality = self.entry_trigger.min_quality_score
         self.entry_trigger.min_quality_score = min_quality
@@ -527,12 +668,54 @@ class TradeExecutor:
 
         self.stats.total_signals += 1
 
+        # Apply adaptive risk settings based on market conditions
+        if self.use_adaptive_risk and htf_data is not None:
+            # Calculate ATR from HTF data
+            atr_pips = calculate_atr(htf_data, period=14) if len(htf_data) >= 14 else signal.sl_pips * 1.5
+            regime_confidence = regime_info.probability if regime_info else 0.7
+
+            # Get adaptive parameters
+            adaptive_params = self.adaptive_risk.get_adaptive_params(
+                current_balance=account_balance,
+                atr_pips=atr_pips,
+                regime_confidence=regime_confidence,
+                current_time=datetime.now(timezone.utc)
+            )
+
+            # Apply adaptive limits to risk manager
+            self.risk_manager.max_lot_size = adaptive_params.max_lot_size
+            self.risk_manager.min_sl_pips = adaptive_params.min_sl_pips
+            self.risk_manager.max_sl_pips = adaptive_params.max_sl_pips
+
+            logger.debug(f"Adaptive risk: {adaptive_params.reason} | MaxLot={adaptive_params.max_lot_size} ATR={atr_pips:.1f}")
+
         # Calculate position size
         risk_params = self.risk_manager.calculate_lot_size(
             account_balance,
             signal.quality_score,
             signal.sl_pips
         )
+
+        # Zero Losing Months: Enforce max loss per trade cap
+        # Calculate max lot that respects loss cap
+        max_loss_pct = self.adaptive_risk.max_loss_per_trade_pct if hasattr(self.adaptive_risk, 'max_loss_per_trade_pct') else 0.1  # ZERO LOSING MONTHS
+        max_lot_from_cap = self.risk_manager.calculate_lot_with_loss_cap(
+            account_balance,
+            signal.sl_pips,
+            max_loss_pct
+        )
+
+        # Use the smaller of calculated lot and loss-capped lot
+        if risk_params.lot_size > max_lot_from_cap:
+            logger.debug(f"Lot capped: {risk_params.lot_size} -> {max_lot_from_cap} (max loss {max_loss_pct}%)")
+            risk_params = self.risk_manager.calculate_lot_size(
+                account_balance,
+                signal.quality_score,
+                signal.sl_pips
+            )
+            # Override lot size with capped value
+            risk_params.lot_size = max_lot_from_cap
+            risk_params.risk_amount = max_lot_from_cap * signal.sl_pips * self.risk_manager.pip_value
 
         # Validate risk
         valid, msg = self.risk_manager.validate_risk(
@@ -746,7 +929,10 @@ class TradeExecutor:
                 logger.error(f"Position management failed: {e}")
 
     def _handle_trade_close(self, pos: PositionState, result: str, exit_price: float):
-        """Handle trade close for statistics"""
+        """Handle trade close for statistics
+
+        Updates all tracking: daily, monthly, adaptive risk.
+        """
         if pos.direction == 'BUY':
             profit_pips = (exit_price - pos.entry_price) / 0.0001
         else:
@@ -765,11 +951,18 @@ class TradeExecutor:
         # Record with trade mode manager for consecutive loss tracking
         self.trade_mode_manager.record_trade_result(is_win, profit_usd)
 
+        # Record with adaptive risk manager for performance tracking
+        if self.use_adaptive_risk:
+            self.adaptive_risk.record_trade_result(is_win, profit_usd)
+
+        # Register trade close (updates both daily and monthly stats)
         self.risk_manager.register_trade_close(profit_usd)
         self.exit_manager.close_position(pos.ticket, result)
         self.exit_manager.remove_position(pos.ticket)
 
-        logger.info(f"Trade closed: {result}, P/L: ${profit_usd:+.2f}")
+        # Log with monthly info (Zero Losing Months tracking)
+        monthly_stats = self.risk_manager.get_monthly_stats()
+        logger.info(f"Trade closed: {result}, P/L: ${profit_usd:+.2f}, Monthly: ${monthly_stats['pnl']:+.2f}")
 
     async def _send_trade_alert(self, result: TradeResult, signal: LTFEntrySignal, risk_params):
         """Send trade alert to Telegram"""
@@ -896,15 +1089,20 @@ class TradeExecutor:
         in_kz, session = self.is_in_killzone()
         mode_status = self.trade_mode_manager.get_status()
 
-        # Activity info
+        # Activity info (from IntelligentActivityFilter)
         activity_info = {}
         if self._last_activity:
             activity_info = {
-                'level': self._last_activity.level.value,
+                'level': self._last_activity.activity.value,  # MarketActivity enum
                 'score': self._last_activity.score,
                 'atr_pips': self._last_activity.atr_pips,
-                'is_active': self._last_activity.is_active
+                'should_trade': self._last_activity.should_trade,
+                'velocity': self._last_activity.velocity,
+                'quality_threshold': self._last_activity.quality_threshold
             }
+
+        # Get monthly stats (Zero Losing Months)
+        monthly_stats = self.risk_manager.get_monthly_stats()
 
         return {
             'state': self.state.value,
@@ -915,15 +1113,18 @@ class TradeExecutor:
             'bias': regime.bias if regime else 'NONE',
             'in_killzone': in_kz,
             'session': session,
-            'hybrid_mode': self.hybrid_mode_enabled,
+            'intelligent_filter': self.use_intelligent_filter,
             'activity': activity_info,
             'cooldown_active': self.is_cooldown_active(),
             'open_positions': self.risk_manager.open_positions,
             'daily_pnl': self.risk_manager.daily_pnl,
+            'monthly_pnl': monthly_stats['pnl'],
+            'monthly_trades': monthly_stats['trades'],
             'trade_mode': mode_status['mode'],
             'mode_reason': mode_status['reason'],
             'consecutive_losses': mode_status['consecutive_losses'],
             'regime_changes_today': mode_status['regime_changes_today'],
+            'december_skip': self.skip_december,
             'stats': {
                 'total_signals': self.stats.total_signals,
                 'trades_executed': self.stats.trades_executed,
@@ -939,11 +1140,12 @@ class TradeExecutor:
         self.poi_detector.reset()
         self.entry_trigger.reset()
         self.exit_manager.reset()
-        self.activity_filter.reset()
+        self.intelligent_filter.reset()
         self.trade_mode_manager = TradeModeManager()
         self._previous_mode = TradeMode.AUTO
-        self._prev_activity_level = None
+        self._last_intelligent_result = None
         self._last_activity = None
+        self._last_risk_warning_time = None
         self._warmup_count = 0
         self._last_signal_time = None
         self.state = ExecutorState.IDLE
@@ -951,7 +1153,7 @@ class TradeExecutor:
         logger.info("Executor reset")
 
     def initialize_daily_stats(self, current_balance: float):
-        """Initialize daily/weekly stats with current balance
+        """Initialize daily/weekly/monthly stats with current balance
 
         Call this at the start of each trading day.
 
@@ -966,6 +1168,11 @@ class TradeExecutor:
         # Reset weekly stats on Monday
         if now.weekday() == 0:  # Monday
             self.trade_mode_manager.reset_weekly_stats(current_balance)
+
+        # Reset monthly stats on 1st of month (Zero Losing Months)
+        if now.day == 1:
+            self.risk_manager.start_month(current_balance)
+            logger.info(f"Monthly stats initialized for {now.strftime('%B %Y')}")
 
         logger.info(f"Daily stats initialized with balance ${current_balance:,.2f}")
 

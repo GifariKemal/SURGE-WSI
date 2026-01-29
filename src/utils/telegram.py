@@ -15,7 +15,7 @@ Styling Reference:
 Author: SURIOTA Team
 """
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Callable, Any, List
 from loguru import logger
 
@@ -635,6 +635,7 @@ class TelegramFormatter:
         msg += "<code>/positions</code> - Open positions\n"
         msg += "<code>/regime</code> - Market regime\n"
         msg += "<code>/pois</code> - Active POIs\n"
+        msg += "<code>/activity</code> - Market activity (INTEL_60)\n"
         msg += "<code>/mode</code> - Trading mode\n"
 
         msg += cls.tree_section("Control", cls.GEAR)
@@ -799,12 +800,18 @@ class TelegramNotifier:
         self._bot: Optional[Bot] = None
         self._app: Optional[Application] = None
 
+        # Rate limiting (max 20 messages per minute for Telegram API)
+        self._message_times: List[datetime] = []
+        self._rate_limit_messages = 15  # Conservative limit
+        self._rate_limit_window = 60  # seconds
+
         # Command callbacks (set by executor)
         self.on_status: Optional[Callable] = None
         self.on_balance: Optional[Callable] = None
         self.on_positions: Optional[Callable] = None
         self.on_regime: Optional[Callable] = None
         self.on_pois: Optional[Callable] = None
+        self.on_activity: Optional[Callable] = None  # Intelligent Activity Filter status
         self.on_mode: Optional[Callable] = None
         self.on_pause: Optional[Callable] = None
         self.on_resume: Optional[Callable] = None
@@ -852,6 +859,7 @@ class TelegramNotifier:
             self._app.add_handler(CommandHandler("positions", self._handle_positions))
             self._app.add_handler(CommandHandler("regime", self._handle_regime))
             self._app.add_handler(CommandHandler("pois", self._handle_pois))
+            self._app.add_handler(CommandHandler("activity", self._handle_activity))
             self._app.add_handler(CommandHandler("mode", self._handle_mode))
             self._app.add_handler(CommandHandler("pause", self._handle_pause))
             self._app.add_handler(CommandHandler("resume", self._handle_resume))
@@ -878,13 +886,23 @@ class TelegramNotifier:
             await self._app.stop()
             await self._app.shutdown()
 
-    async def send(self, message: str):
-        """Send message to chat
+    async def send(self, message: str, force: bool = False):
+        """Send message to chat with rate limiting
 
         Args:
             message: HTML formatted message
+            force: Bypass rate limiting for critical messages
         """
         if not self.enabled or not self._bot:
+            return
+
+        # Rate limiting check
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(seconds=self._rate_limit_window)
+        self._message_times = [t for t in self._message_times if t > cutoff]
+
+        if not force and len(self._message_times) >= self._rate_limit_messages:
+            logger.warning(f"Telegram rate limit reached ({len(self._message_times)}/{self._rate_limit_messages}), skipping message")
             return
 
         try:
@@ -893,137 +911,210 @@ class TelegramNotifier:
                 text=message,
                 parse_mode='HTML'
             )
+            self._message_times.append(now)
         except Exception as e:
             logger.error(f"Telegram send failed: {e}")
 
-    # Command handlers
+    # Command handlers - with exception handling
     async def _handle_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /status command"""
-        if self.on_status:
-            status = await self.on_status()
-            await update.message.reply_text(status, parse_mode='HTML')
-        else:
-            await update.message.reply_text("Status not available")
+        try:
+            if self.on_status:
+                status = await self.on_status()
+                await update.message.reply_text(status, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Status not available")
+        except Exception as e:
+            logger.error(f"Error handling /status: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_balance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /balance command"""
-        if self.on_balance:
-            balance = await self.on_balance()
-            await update.message.reply_text(balance, parse_mode='HTML')
-        else:
-            await update.message.reply_text("Balance not available")
+        try:
+            if self.on_balance:
+                balance = await self.on_balance()
+                await update.message.reply_text(balance, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Balance not available")
+        except Exception as e:
+            logger.error(f"Error handling /balance: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_positions(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /positions command"""
-        if self.on_positions:
-            positions = await self.on_positions()
-            await update.message.reply_text(positions, parse_mode='HTML')
-        else:
-            await update.message.reply_text("Positions not available")
+        try:
+            if self.on_positions:
+                positions = await self.on_positions()
+                await update.message.reply_text(positions, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Positions not available")
+        except Exception as e:
+            logger.error(f"Error handling /positions: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_regime(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /regime command"""
-        if self.on_regime:
-            regime = await self.on_regime()
-            await update.message.reply_text(regime, parse_mode='HTML')
-        else:
-            await update.message.reply_text("Regime not available")
+        try:
+            if self.on_regime:
+                regime = await self.on_regime()
+                await update.message.reply_text(regime, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Regime not available")
+        except Exception as e:
+            logger.error(f"Error handling /regime: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_pois(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /pois command"""
-        if self.on_pois:
-            pois = await self.on_pois()
-            await update.message.reply_text(pois, parse_mode='HTML')
-        else:
-            await update.message.reply_text("POIs not available")
+        try:
+            if self.on_pois:
+                pois = await self.on_pois()
+                await update.message.reply_text(pois, parse_mode='HTML')
+            else:
+                await update.message.reply_text("POIs not available")
+        except Exception as e:
+            logger.error(f"Error handling /pois: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_activity(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /activity command - Intelligent Activity Filter status"""
+        try:
+            if self.on_activity:
+                activity = await self.on_activity()
+                await update.message.reply_text(activity, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Activity filter status not available")
+        except Exception as e:
+            logger.error(f"Error handling /activity: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_mode(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /mode command"""
-        if self.on_mode:
-            mode = await self.on_mode()
-            await update.message.reply_text(mode, parse_mode='HTML')
-        else:
-            await update.message.reply_text("Mode status not available")
+        try:
+            if self.on_mode:
+                mode = await self.on_mode()
+                await update.message.reply_text(mode, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Mode status not available")
+        except Exception as e:
+            logger.error(f"Error handling /mode: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_force_auto(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /force_auto command"""
-        if self.on_force_auto:
-            await self.on_force_auto()
-            await update.message.reply_text(
-                f"{TelegramFormatter.GREEN} <b>Forced AUTO mode</b>\n<i>Use with caution!</i>",
-                parse_mode='HTML'
-            )
-        else:
-            await update.message.reply_text("Cannot force auto mode")
+        try:
+            if self.on_force_auto:
+                await self.on_force_auto()
+                await update.message.reply_text(
+                    f"{TelegramFormatter.GREEN} <b>Forced AUTO mode</b>\n<i>Use with caution!</i>",
+                    parse_mode='HTML'
+                )
+            else:
+                await update.message.reply_text("Cannot force auto mode")
+        except Exception as e:
+            logger.error(f"Error handling /force_auto: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_force_signal(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /force_signal command"""
-        if self.on_force_signal:
-            await self.on_force_signal()
-            await update.message.reply_text(
-                f"{TelegramFormatter.YELLOW} <b>Forced SIGNAL-ONLY mode</b>",
-                parse_mode='HTML'
-            )
-        else:
-            await update.message.reply_text("Cannot force signal-only mode")
+        try:
+            if self.on_force_signal:
+                await self.on_force_signal()
+                await update.message.reply_text(
+                    f"{TelegramFormatter.YELLOW} <b>Forced SIGNAL-ONLY mode</b>",
+                    parse_mode='HTML'
+                )
+            else:
+                await update.message.reply_text("Cannot force signal-only mode")
+        except Exception as e:
+            logger.error(f"Error handling /force_signal: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_pause(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /pause command"""
-        if self.on_pause:
-            await self.on_pause()
-            await update.message.reply_text(
-                f"⏸ <b>Trading Paused</b>\n<i>Use /resume to continue</i>",
-                parse_mode='HTML'
-            )
-        else:
-            await update.message.reply_text("Cannot pause")
+        try:
+            if self.on_pause:
+                await self.on_pause()
+                await update.message.reply_text(
+                    f"⏸ <b>Trading Paused</b>\n<i>Use /resume to continue</i>",
+                    parse_mode='HTML'
+                )
+            else:
+                await update.message.reply_text("Cannot pause")
+        except Exception as e:
+            logger.error(f"Error handling /pause: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /resume command"""
-        if self.on_resume:
-            await self.on_resume()
-            await update.message.reply_text(
-                f"▶️ <b>Trading Resumed</b>",
-                parse_mode='HTML'
-            )
-        else:
-            await update.message.reply_text("Cannot resume")
+        try:
+            if self.on_resume:
+                await self.on_resume()
+                await update.message.reply_text(
+                    f"▶️ <b>Trading Resumed</b>",
+                    parse_mode='HTML'
+                )
+            else:
+                await update.message.reply_text("Cannot resume")
+        except Exception as e:
+            logger.error(f"Error handling /resume: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_close_all(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /close_all command"""
-        if self.on_close_all:
-            result = await self.on_close_all()
-            await update.message.reply_text(result, parse_mode='HTML')
-        else:
-            await update.message.reply_text("Cannot close positions")
+        try:
+            if self.on_close_all:
+                result = await self.on_close_all()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Cannot close positions")
+        except Exception as e:
+            logger.error(f"Error handling /close_all: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_test_buy(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /test_buy command"""
-        if self.on_test_buy:
-            result = await self.on_test_buy()
-            await update.message.reply_text(result, parse_mode='HTML')
-        else:
-            await update.message.reply_text("Test buy not available")
+        try:
+            if self.on_test_buy:
+                result = await self.on_test_buy()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Test buy not available")
+        except Exception as e:
+            logger.error(f"Error handling /test_buy: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_test_sell(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /test_sell command"""
-        if self.on_test_sell:
-            result = await self.on_test_sell()
-            await update.message.reply_text(result, parse_mode='HTML')
-        else:
-            await update.message.reply_text("Test sell not available")
+        try:
+            if self.on_test_sell:
+                result = await self.on_test_sell()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Test sell not available")
+        except Exception as e:
+            logger.error(f"Error handling /test_sell: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_autotrading(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /autotrading command"""
-        if self.on_autotrading:
-            result = await self.on_autotrading()
-            await update.message.reply_text(result, parse_mode='HTML')
-        else:
-            await update.message.reply_text("AutoTrading check not available")
+        try:
+            if self.on_autotrading:
+                result = await self.on_autotrading()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("AutoTrading check not available")
+        except Exception as e:
+            logger.error(f"Error handling /autotrading: {e}")
+            await update.message.reply_text(f"Error: {e}")
 
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
-        await update.message.reply_text(
-            TelegramFormatter.help_message(),
-            parse_mode='HTML'
-        )
+        try:
+            await update.message.reply_text(
+                TelegramFormatter.help_message(),
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            logger.error(f"Error handling /help: {e}")
+            await update.message.reply_text(f"Error: {e}")

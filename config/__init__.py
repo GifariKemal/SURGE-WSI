@@ -98,7 +98,7 @@ class EntrySettings(BaseModel):
     sweep_min_pips: float = 2.0
     mss_lookback: int = 10
     fvg_min_pips: float = 1.0
-    min_quality_score: float = 60.0
+    min_quality_score: float = 65.0   # Higher quality for zero-loss strategy
     max_sl_pips: float = 50.0
     rejection_wick_ratio: float = 0.5
 
@@ -130,11 +130,16 @@ class RiskSettings(BaseModel):
     low_quality_risk: float = 0.005   # 0.5%
     # Daily limits
     daily_profit_target: float = 100.0
-    daily_loss_limit: float = 150.0
+    daily_loss_limit: float = 80.0    # 0.8% of $10K = $80 daily loss limit
     max_open_positions: int = 1
-    # Per trade
-    max_lot_size: float = 0.1
+    # Per trade limits - ZERO LOSING MONTHS CONFIG
+    max_lot_size: float = 0.5         # Conservative base for zero-loss strategy
     min_lot_size: float = 0.01
+    min_sl_pips: float = 15.0         # Minimum SL distance
+    max_sl_pips: float = 50.0         # Maximum SL distance
+    # Loss protection
+    max_loss_per_trade_pct: float = 0.8   # Maximum 0.8% loss per trade
+    monthly_loss_stop_pct: float = 2.0    # Stop trading if monthly loss > 2%
 
 
 class TradingSettings(BaseModel):

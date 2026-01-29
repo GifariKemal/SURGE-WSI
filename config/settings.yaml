@@ -60,21 +60,22 @@ market_filter:
   lookback_bars: 20           # Bars to analyze for trend
 
 # Relaxed Entry Filter - relax filters in low-activity periods
+# DISABLED for Zero Losing Months strategy (tighter control = better)
 relaxed_entry:
-  enabled: true
-  min_quality_normal: 60.0    # Normal min quality score
-  min_quality_relaxed: 50.0   # Relaxed min quality (no recent trades)
+  enabled: false              # Disabled - we need strict quality control
+  min_quality_normal: 65.0    # Higher normal quality
+  min_quality_relaxed: 60.0   # Relaxed quality (no recent trades)
   require_full_confirmation_normal: true
-  require_full_confirmation_relaxed: false
+  require_full_confirmation_relaxed: true  # Always require full confirmation
 
   # Time settings
   skip_weekends: true
   skip_friday_late: true      # Avoid Friday after 20:00 UTC
   boost_overlap_hours: true   # Bonus during London-NY overlap
 
-  # Conservative mode note:
-  # Based on backtest: trades outside KZ have lower win rate
-  # Only allow trading outside KZ for exceptional opportunities
+  # Zero Losing Months note:
+  # Backtest shows strict filters prevent large losses
+  # Better to miss trades than have losing months
 
 # ============================================
 # Layer 4: POI Detection (Order Blocks + FVG)
@@ -98,8 +99,8 @@ entry:
   sweep_min_pips: 2.0    # Minimum liquidity sweep distance
   mss_lookback: 10       # MSS detection lookback
   fvg_min_pips: 1.0      # LTF FVG minimum size
-  min_quality_score: 60.0  # Minimum signal quality
-  max_sl_pips: 50.0      # Maximum stop loss
+  min_quality_score: 75.0  # ZERO LOSING MONTHS: Higher quality threshold
+  max_sl_pips: 10.0      # ZERO LOSING MONTHS: Maximum stop loss (was 50)
   rejection_wick_ratio: 0.5  # Wick > 50% of candle body
 
 # ============================================
@@ -139,12 +140,50 @@ risk:
 
   # Daily limits
   daily_profit_target: 100.0
-  daily_loss_limit: 150.0
+  daily_loss_limit: 80.0         # 0.8% of $10K = $80 daily loss limit
   max_open_positions: 1
 
-  # Per trade limits
-  max_lot_size: 0.1
-  min_lot_size: 0.01
+  # Per trade limits - ZERO LOSING MONTHS CONFIG
+  max_lot_size: 0.5              # Conservative base for zero-loss strategy
+  min_lot_size: 0.01             # Min lot size (broker minimum)
+  min_sl_pips: 15.0              # Minimum SL distance (prevents overleveraging)
+  max_sl_pips: 10.0              # ZERO LOSING MONTHS: Maximum SL distance (was 50)
+
+  # ZERO LOSING MONTHS: Max loss per trade protection
+  max_loss_per_trade_pct: 0.1    # ZERO LOSING MONTHS: Maximum 0.1% loss per trade (was 0.8)
+  monthly_loss_stop_pct: 2.0     # Stop trading if monthly loss > 2%
+
+# ============================================
+# Adaptive Risk Management
+# ============================================
+# Automatically adjusts risk based on market conditions
+# Tuned for GBPUSD (typically 25-35 ATR)
+# UPDATED: Zero Losing Months Configuration
+adaptive_risk:
+  enabled: true
+
+  # Base settings (zero-loss strategy)
+  base_max_lot: 0.5              # Conservative base for protection
+  base_risk_percent: 0.008       # 0.8% max risk per trade
+
+  # Volatility thresholds (ATR in pips) - tuned for GBPUSD
+  low_volatility_atr: 12.0       # ATR < 12 = low vol (reduce lot)
+  high_volatility_atr: 40.0      # ATR > 40 = high vol (reduce lot)
+  extreme_volatility_atr: 55.0   # ATR > 55 = extreme (heavily reduce)
+
+  # Performance tracking
+  consecutive_loss_threshold: 2  # 2 losses = reduce risk (stricter)
+  drawdown_threshold: 0.08       # 8% DD = reduce risk 50% (stricter)
+
+  # Time-based adjustments
+  friday_close_reduction: 0.5    # 50% reduction after Friday 18:00 UTC
+  december_reduction: 0.1        # 90% reduction Dec 15-31 (almost no trading)
+
+  # December special settings (anomaly month)
+  # December historically has 12.5% win rate - essentially skip it
+  skip_december: true            # Skip trading entirely in December
+  december_max_lot: 0.01         # If not skipping, use minimal lot
+  december_min_quality: 99.0     # If not skipping, impossible quality
 
 # ============================================
 # Trading Settings

@@ -97,6 +97,7 @@ echo   /balance   - Account balance
 echo   /positions - Open positions
 echo   /regime    - Market regime
 echo   /pois      - Active POIs
+echo   /activity  - Market activity (INTEL_60)
 echo   /pause     - Pause trading
 echo   /resume    - Resume trading
 echo   /test_buy  - Test BUY order (0.01 lot)
