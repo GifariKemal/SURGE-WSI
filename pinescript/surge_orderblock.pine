@@ -1,26 +1,31 @@
 // ============================================================================
-// SURGE-WSI Order Block Detector
+// SURGE-WSI Order Block Detector v2
 // ============================================================================
 //
 // Pine Script v6 - untuk TradingView
 //
-// Logika ini sama persis dengan poi_detector.py di SURGE-WSI
-// Gunakan untuk verifikasi akurasi deteksi Order Block
+// UPDATED: Match dengan poi_detector.py logic
+// - Swing High/Low based detection (seperti smartmoneyconcepts)
+// - Multiple OB detection patterns
+// - Strength filter
 //
 // Author: SURIOTA Team
 // ============================================================================
 
 //@version=6
-indicator("SURGE-WSI Order Block", shorttitle="SURGE OB", overlay=true, max_boxes_count=500, max_labels_count=500)
+indicator("SURGE-WSI Order Block v2", shorttitle="SURGE OB v2", overlay=true, max_boxes_count=500, max_labels_count=500)
 
 // ============================================================================
 // INPUT SETTINGS
 // ============================================================================
 grp_ob = "Order Block Settings"
+swing_length = input.int(10, "Swing Length", minval=3, maxval=50, group=grp_ob, tooltip="Bars for swing detection (same as Python: 10)")
 impulsive_ratio = input.float(1.5, "Impulsive Ratio", minval=1.0, maxval=5.0, step=0.1, group=grp_ob, tooltip="Minimum ratio of impulse move to OB body (default: 1.5x)")
-max_ob_age = input.int(50, "Max OB Age (bars)", minval=10, maxval=200, group=grp_ob, tooltip="Order Block older than this will be removed")
+min_strength = input.float(0.4, "Min Strength", minval=0.1, maxval=1.0, step=0.1, group=grp_ob, tooltip="Minimum OB strength (0-1, same as Python: 0.4)")
+max_ob_age = input.int(50, "Max OB Age (bars)", minval=10, maxval=200, group=grp_ob, tooltip="Order Block older than this will be removed (same as Python: 50)")
 show_mitigated = input.bool(true, "Show Mitigated OB", group=grp_ob, tooltip="Show order blocks that have been mitigated")
 extend_ob = input.bool(true, "Extend OB to Current Bar", group=grp_ob, tooltip="Extend OB box to current bar")
+show_swing = input.bool(false, "Show Swing Points", group=grp_ob, tooltip="Show swing high/low markers")
 
 grp_style = "Style Settings"
 bull_ob_color = input.color(color.new(color.green, 80), "Bullish OB Color", group=grp_style)
@@ -31,11 +36,42 @@ mitigated_color = input.color(color.new(color.gray, 85), "Mitigated OB Color", g
 show_labels = input.bool(true, "Show Labels", group=grp_style)
 
 // ============================================================================
-// ORDER BLOCK DETECTION LOGIC (sama dengan poi_detector.py)
+// SWING HIGH/LOW DETECTION (seperti Python swing_length=10)
 // ============================================================================
 
-// Bullish Order Block Detection
-// Logika: Down candle (close < open) diikuti impulsive up move
+// Detect swing high
+is_swing_high(int idx) =>
+    if idx < swing_length or idx > bar_index - swing_length
+        false
+    else
+        highest_val = high[idx]
+        is_highest = true
+        for i = idx - swing_length to idx + swing_length
+            offset = idx - i
+            if offset != 0 and high[offset] > highest_val
+                is_highest := false
+                break
+        is_highest
+
+// Detect swing low
+is_swing_low(int idx) =>
+    if idx < swing_length or idx > bar_index - swing_length
+        false
+    else
+        lowest_val = low[idx]
+        is_lowest = true
+        for i = idx - swing_length to idx + swing_length
+            offset = idx - i
+            if offset != 0 and low[offset] < lowest_val
+                is_lowest := false
+                break
+        is_lowest
+
+// ============================================================================
+// ORDER BLOCK DETECTION LOGIC (sama dengan poi_detector.py fallback)
+// ============================================================================
+
+// Helper functions
 is_down_candle(int idx) =>
     close[idx] < open[idx]
 
@@ -45,21 +81,101 @@ is_up_candle(int idx) =>
 get_body_size(int idx) =>
     math.abs(close[idx] - open[idx])
 
+get_candle_range(int idx) =>
+    high[idx] - low[idx]
+
+// Calculate OB strength (0-1, normalized by size)
+// Python: strength = min(1.0, size_pips / 20)
+calc_ob_strength(float ob_top, float ob_bottom) =>
+    pip_size = syminfo.mintick >= 0.01 ? 0.01 : 0.0001
+    size_pips = math.abs(ob_top - ob_bottom) / pip_size
+    math.min(1.0, size_pips / 20.0)
+
+// ============================================================================
+// PATTERN 1: Simple 3-candle pattern (original)
 // Bullish OB: candle down di [2], diikuti impulsive up di [1] dan [0]
-bullish_ob_detected() =>
-    // Wrap entire condition in parentheses for multi-line
+// ============================================================================
+bullish_ob_pattern1() =>
     (is_down_candle(2) and
      is_up_candle(1) and
      close > close[1] and
      (close - open[2]) > (get_body_size(2) * impulsive_ratio))
 
-// Bearish OB: candle up di [2], diikuti impulsive down di [1] dan [0]
-bearish_ob_detected() =>
-    // Wrap entire condition in parentheses for multi-line
+bearish_ob_pattern1() =>
     (is_up_candle(2) and
      is_down_candle(1) and
      close < close[1] and
      (open[2] - close) > (get_body_size(2) * impulsive_ratio))
+
+// ============================================================================
+// PATTERN 2: Swing-based OB (seperti smartmoneyconcepts)
+// OB formed at swing point with strong rejection
+// ============================================================================
+bullish_ob_pattern2() =>
+    // Down candle at recent swing low followed by reversal
+    is_down_candle(3) and
+    low[3] <= ta.lowest(low, swing_length * 2) and
+    is_up_candle(2) and
+    is_up_candle(1) and
+    (close - low[3]) > (get_candle_range(3) * impulsive_ratio)
+
+bearish_ob_pattern2() =>
+    // Up candle at recent swing high followed by reversal
+    is_up_candle(3) and
+    high[3] >= ta.highest(high, swing_length * 2) and
+    is_down_candle(2) and
+    is_down_candle(1) and
+    (high[3] - close) > (get_candle_range(3) * impulsive_ratio)
+
+// ============================================================================
+// PATTERN 3: Engulfing OB pattern
+// Strong engulfing candle creates OB zone
+// ============================================================================
+bullish_ob_pattern3() =>
+    // Bearish candle followed by bullish engulfing
+    is_down_candle(2) and
+    is_up_candle(1) and
+    open[1] <= close[2] and
+    close[1] >= open[2] and
+    get_body_size(1) > get_body_size(2) * 1.2
+
+bearish_ob_pattern3() =>
+    // Bullish candle followed by bearish engulfing
+    is_up_candle(2) and
+    is_down_candle(1) and
+    open[1] >= close[2] and
+    close[1] <= open[2] and
+    get_body_size(1) > get_body_size(2) * 1.2
+
+// ============================================================================
+// COMBINED DETECTION
+// ============================================================================
+bullish_ob_detected() =>
+    bullish_ob_pattern1() or bullish_ob_pattern2() or bullish_ob_pattern3()
+
+bearish_ob_detected() =>
+    bearish_ob_pattern1() or bearish_ob_pattern2() or bearish_ob_pattern3()
+
+// Get OB zone based on which pattern triggered
+get_bull_ob_zone() =>
+    if bullish_ob_pattern1()
+        [open[2], low[2], 2]
+    else if bullish_ob_pattern2()
+        [open[3], low[3], 3]
+    else if bullish_ob_pattern3()
+        [open[2], low[2], 2]
+    else
+        [open[2], low[2], 2]
+
+get_bear_ob_zone() =>
+    if bearish_ob_pattern1()
+        [high[2], open[2], 2]
+    else if bearish_ob_pattern2()
+        [high[3], open[3], 3]
+    else if bearish_ob_pattern3()
+        [high[2], open[2], 2]
+    else
+        [high[2], open[2], 2]
 
 // ============================================================================
 // ORDER BLOCK STORAGE & MANAGEMENT
@@ -76,6 +192,8 @@ var int[] bull_ob_bars = array.new_int()
 var int[] bear_ob_bars = array.new_int()
 var bool[] bull_ob_mitigated = array.new_bool()
 var bool[] bear_ob_mitigated = array.new_bool()
+var float[] bull_ob_strengths = array.new_float()
+var float[] bear_ob_strengths = array.new_float()
 
 // ============================================================================
 // CREATE NEW ORDER BLOCKS
@@ -83,76 +201,83 @@ var bool[] bear_ob_mitigated = array.new_bool()
 
 // Detect and create Bullish OB
 if bullish_ob_detected()
-    ob_top = open[2]
-    ob_bottom = low[2]
-    ob_bar = bar_index - 2
+    [ob_top, ob_bottom, offset] = get_bull_ob_zone()
+    ob_bar = bar_index - offset
+    strength = calc_ob_strength(ob_top, ob_bottom)
 
-    // Create box
-    new_box = box.new(
-        left=ob_bar,
-        top=ob_top,
-        right=extend_ob ? bar_index + 10 : ob_bar + max_ob_age,
-        bottom=ob_bottom,
-        bgcolor=bull_ob_color,
-        border_color=bull_border_color,
-        border_width=1,
-        border_style=line.style_solid)
+    // Only create if strength meets minimum (same as Python)
+    if strength >= min_strength
+        // Create box
+        new_box = box.new(
+            left=ob_bar,
+            top=ob_top,
+            right=extend_ob ? bar_index + 10 : ob_bar + max_ob_age,
+            bottom=ob_bottom,
+            bgcolor=bull_ob_color,
+            border_color=bull_border_color,
+            border_width=1,
+            border_style=line.style_solid)
 
-    // Store data
-    array.push(bull_ob_boxes, new_box)
-    array.push(bull_ob_tops, ob_top)
-    array.push(bull_ob_bottoms, ob_bottom)
-    array.push(bull_ob_bars, ob_bar)
-    array.push(bull_ob_mitigated, false)
+        // Store data
+        array.push(bull_ob_boxes, new_box)
+        array.push(bull_ob_tops, ob_top)
+        array.push(bull_ob_bottoms, ob_bottom)
+        array.push(bull_ob_bars, ob_bar)
+        array.push(bull_ob_mitigated, false)
+        array.push(bull_ob_strengths, strength)
 
-    // Add label
-    if show_labels
-        label.new(
-            x=ob_bar,
-            y=ob_bottom,
-            text="Bull OB",
-            style=label.style_label_up,
-            color=bull_border_color,
-            textcolor=color.white,
-            size=size.tiny)
+        // Add label with strength
+        if show_labels
+            label.new(
+                x=ob_bar,
+                y=ob_bottom,
+                text="Bull OB\n" + str.tostring(strength * 100, "#") + "%",
+                style=label.style_label_up,
+                color=bull_border_color,
+                textcolor=color.white,
+                size=size.tiny)
 
 // Detect and create Bearish OB
 if bearish_ob_detected()
-    ob_top = high[2]
-    ob_bottom = open[2]
-    ob_bar = bar_index - 2
+    [ob_top, ob_bottom, offset] = get_bear_ob_zone()
+    ob_bar = bar_index - offset
+    strength = calc_ob_strength(ob_top, ob_bottom)
 
-    // Create box
-    new_box = box.new(
-        left=ob_bar,
-        top=ob_top,
-        right=extend_ob ? bar_index + 10 : ob_bar + max_ob_age,
-        bottom=ob_bottom,
-        bgcolor=bear_ob_color,
-        border_color=bear_border_color,
-        border_width=1,
-        border_style=line.style_solid)
+    // Only create if strength meets minimum
+    if strength >= min_strength
+        // Create box
+        new_box = box.new(
+            left=ob_bar,
+            top=ob_top,
+            right=extend_ob ? bar_index + 10 : ob_bar + max_ob_age,
+            bottom=ob_bottom,
+            bgcolor=bear_ob_color,
+            border_color=bear_border_color,
+            border_width=1,
+            border_style=line.style_solid)
 
-    // Store data
-    array.push(bear_ob_boxes, new_box)
-    array.push(bear_ob_tops, ob_top)
-    array.push(bear_ob_bottoms, ob_bottom)
-    array.push(bear_ob_bars, ob_bar)
-    array.push(bear_ob_mitigated, false)
+        // Store data
+        array.push(bear_ob_boxes, new_box)
+        array.push(bear_ob_tops, ob_top)
+        array.push(bear_ob_bottoms, ob_bottom)
+        array.push(bear_ob_bars, ob_bar)
+        array.push(bear_ob_mitigated, false)
+        array.push(bear_ob_strengths, strength)
 
-    // Add label
-    if show_labels
-        label.new(
-            x=ob_bar,
-            y=ob_top,
-            text="Bear OB",
-            style=label.style_label_down,
-            color=bear_border_color,
-            textcolor=color.white,
-            size=size.tiny)
+        // Add label with strength
+        if show_labels
+            label.new(
+                x=ob_bar,
+                y=ob_top,
+                text="Bear OB\n" + str.tostring(strength * 100, "#") + "%",
+                style=label.style_label_down,
+                color=bear_border_color,
+                textcolor=color.white,
+                size=size.tiny)
 
 // ============================================================================
 // UPDATE ORDER BLOCKS (Extend & Check Mitigation)
+// Same logic as Python poi_detector.py lines 697-706
 // ============================================================================
 
 // Update Bullish OBs
@@ -172,9 +297,11 @@ if array.size(bull_ob_boxes) > 0
             array.remove(bull_ob_bottoms, i)
             array.remove(bull_ob_bars, i)
             array.remove(bull_ob_mitigated, i)
+            array.remove(bull_ob_strengths, i)
             continue
 
-        // Check mitigation (price goes below OB)
+        // Check mitigation (Python: current_price < ob.bottom)
+        // Bullish OB mitigated if price goes BELOW the zone
         if not is_mitigated and low < ob_bottom
             array.set(bull_ob_mitigated, i, true)
             if show_mitigated
@@ -188,6 +315,7 @@ if array.size(bull_ob_boxes) > 0
                 array.remove(bull_ob_bottoms, i)
                 array.remove(bull_ob_bars, i)
                 array.remove(bull_ob_mitigated, i)
+                array.remove(bull_ob_strengths, i)
                 continue
 
         // Extend box to current bar
@@ -211,9 +339,11 @@ if array.size(bear_ob_boxes) > 0
             array.remove(bear_ob_bottoms, i)
             array.remove(bear_ob_bars, i)
             array.remove(bear_ob_mitigated, i)
+            array.remove(bear_ob_strengths, i)
             continue
 
-        // Check mitigation (price goes above OB)
+        // Check mitigation (Python: current_price > ob.top)
+        // Bearish OB mitigated if price goes ABOVE the zone
         if not is_mitigated and high > ob_top
             array.set(bear_ob_mitigated, i, true)
             if show_mitigated
@@ -227,11 +357,22 @@ if array.size(bear_ob_boxes) > 0
                 array.remove(bear_ob_bottoms, i)
                 array.remove(bear_ob_bars, i)
                 array.remove(bear_ob_mitigated, i)
+                array.remove(bear_ob_strengths, i)
                 continue
 
         // Extend box to current bar
         if extend_ob and not array.get(bear_ob_mitigated, i)
             box.set_right(ob_box, bar_index + 10)
+
+// ============================================================================
+// SWING POINT VISUALIZATION (optional)
+// ============================================================================
+plotshape(show_swing and is_swing_high(swing_length) ? high[swing_length] : na,
+          title="Swing High", location=location.abovebar,
+          style=shape.triangledown, size=size.tiny, color=color.orange, offset=-swing_length)
+plotshape(show_swing and is_swing_low(swing_length) ? low[swing_length] : na,
+          title="Swing Low", location=location.belowbar,
+          style=shape.triangleup, size=size.tiny, color=color.blue, offset=-swing_length)
 
 // ============================================================================
 // ALERTS
@@ -268,30 +409,41 @@ alertcondition(bearish_ob_detected(), title="New Bearish OB", message="SURGE-WSI
 // INFO TABLE
 // ============================================================================
 
-var table info_table = table.new(position.top_right, 2, 5, bgcolor=color.new(color.black, 80), border_width=1)
+var table info_table = table.new(position.top_right, 2, 6, bgcolor=color.new(color.black, 80), border_width=1)
 
 if barstate.islast
     active_bull_count = 0
     active_bear_count = 0
+    avg_bull_strength = 0.0
+    avg_bear_strength = 0.0
 
     for i = 0 to array.size(bull_ob_mitigated) - 1
         if not array.get(bull_ob_mitigated, i)
             active_bull_count += 1
+            avg_bull_strength += array.get(bull_ob_strengths, i)
 
     for i = 0 to array.size(bear_ob_mitigated) - 1
         if not array.get(bear_ob_mitigated, i)
             active_bear_count += 1
+            avg_bear_strength += array.get(bear_ob_strengths, i)
 
-    table.cell(info_table, 0, 0, "SURGE-WSI OB", text_color=color.white, text_size=size.small)
+    if active_bull_count > 0
+        avg_bull_strength := avg_bull_strength / active_bull_count
+    if active_bear_count > 0
+        avg_bear_strength := avg_bear_strength / active_bear_count
+
+    table.cell(info_table, 0, 0, "SURGE OB v2", text_color=color.white, text_size=size.small)
     table.cell(info_table, 1, 0, "", text_color=color.white, text_size=size.small)
-    table.cell(info_table, 0, 1, "Active Bull OB:", text_color=color.green, text_size=size.tiny)
-    table.cell(info_table, 1, 1, str.tostring(active_bull_count), text_color=color.green, text_size=size.tiny)
-    table.cell(info_table, 0, 2, "Active Bear OB:", text_color=color.red, text_size=size.tiny)
-    table.cell(info_table, 1, 2, str.tostring(active_bear_count), text_color=color.red, text_size=size.tiny)
-    table.cell(info_table, 0, 3, "Impulse Ratio:", text_color=color.gray, text_size=size.tiny)
-    table.cell(info_table, 1, 3, str.tostring(impulsive_ratio) + "x", text_color=color.gray, text_size=size.tiny)
-    table.cell(info_table, 0, 4, "Max Age:", text_color=color.gray, text_size=size.tiny)
-    table.cell(info_table, 1, 4, str.tostring(max_ob_age) + " bars", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 0, 1, "Bull OB:", text_color=color.green, text_size=size.tiny)
+    table.cell(info_table, 1, 1, str.tostring(active_bull_count) + " (avg " + str.tostring(avg_bull_strength * 100, "#") + "%)", text_color=color.green, text_size=size.tiny)
+    table.cell(info_table, 0, 2, "Bear OB:", text_color=color.red, text_size=size.tiny)
+    table.cell(info_table, 1, 2, str.tostring(active_bear_count) + " (avg " + str.tostring(avg_bear_strength * 100, "#") + "%)", text_color=color.red, text_size=size.tiny)
+    table.cell(info_table, 0, 3, "Swing Length:", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 1, 3, str.tostring(swing_length), text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 0, 4, "Min Strength:", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 1, 4, str.tostring(min_strength * 100, "#") + "%", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 0, 5, "Max Age:", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 1, 5, str.tostring(max_ob_age) + " bars", text_color=color.gray, text_size=size.tiny)
 
 // ============================================================================
 // PLOT SIGNALS (optional visual)

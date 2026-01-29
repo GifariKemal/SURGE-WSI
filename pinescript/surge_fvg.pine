@@ -1,31 +1,29 @@
 // ============================================================================
-// SURGE-WSI Fair Value Gap (FVG) Detector
+// SURGE-WSI Fair Value Gap (FVG) Detector v2
 // ============================================================================
 //
 // Pine Script v6 - untuk TradingView
 //
-// Logika ini sama persis dengan poi_detector.py di SURGE-WSI
-// Gunakan untuk verifikasi akurasi deteksi FVG
-//
-// FVG = Price imbalance / gap antara 3 candle berturut-turut
-// - Bullish FVG: Low candle ke-3 > High candle ke-1 (gap up)
-// - Bearish FVG: High candle ke-3 < Low candle ke-1 (gap down)
+// UPDATED: Match dengan poi_detector.py logic
+// - Same detection as Python _fallback_detection()
+// - Same fill threshold (50%)
+// - Same parameters (fvg_min_pips=2.0, max_age=50)
 //
 // Author: SURIOTA Team
 // ============================================================================
 
 //@version=6
-indicator("SURGE-WSI Fair Value Gap", shorttitle="SURGE FVG", overlay=true, max_boxes_count=500, max_labels_count=500)
+indicator("SURGE-WSI FVG v2", shorttitle="SURGE FVG v2", overlay=true, max_boxes_count=500, max_labels_count=500)
 
 // ============================================================================
-// INPUT SETTINGS
+// INPUT SETTINGS (sama dengan Python poi_detector.py)
 // ============================================================================
 grp_fvg = "FVG Settings"
-min_fvg_pips = input.float(2.0, "Min FVG Size (pips)", minval=0.5, maxval=50.0, step=0.5, group=grp_fvg, tooltip="Minimum FVG size in pips (default: 2.0 pips)")
-max_fvg_age = input.int(50, "Max FVG Age (bars)", minval=10, maxval=200, group=grp_fvg, tooltip="FVG older than this will be removed")
+min_fvg_pips = input.float(2.0, "Min FVG Size (pips)", minval=0.5, maxval=50.0, step=0.5, group=grp_fvg, tooltip="Minimum FVG size in pips (same as Python: 2.0)")
+max_fvg_age = input.int(50, "Max FVG Age (bars)", minval=10, maxval=200, group=grp_fvg, tooltip="FVG older than this will be removed (same as Python: 50)")
 show_filled = input.bool(true, "Show Filled FVG", group=grp_fvg, tooltip="Show FVGs that have been filled/mitigated")
 extend_fvg = input.bool(true, "Extend FVG to Current Bar", group=grp_fvg, tooltip="Extend FVG box to current bar")
-fill_threshold = input.float(50.0, "Fill Threshold (%)", minval=10.0, maxval=100.0, step=5.0, group=grp_fvg, tooltip="Percentage of FVG that must be filled to mark as filled")
+fill_threshold = input.float(50.0, "Fill Threshold (%)", minval=10.0, maxval=100.0, step=5.0, group=grp_fvg, tooltip="Percentage of FVG that must be filled (same as Python: 50%)")
 
 grp_style = "Style Settings"
 bull_fvg_color = input.color(color.new(color.teal, 80), "Bullish FVG Color", group=grp_style)
@@ -34,53 +32,60 @@ bull_border_color = input.color(color.teal, "Bullish Border", group=grp_style)
 bear_border_color = input.color(color.maroon, "Bearish Border", group=grp_style)
 filled_color = input.color(color.new(color.gray, 85), "Filled FVG Color", group=grp_style)
 show_labels = input.bool(true, "Show Labels", group=grp_style)
-show_ce_line = input.bool(true, "Show CE (Consequent Encroachment)", group=grp_style, tooltip="Show 50% level of FVG")
+show_ce_line = input.bool(true, "Show CE (50% level)", group=grp_style, tooltip="Show Consequent Encroachment level")
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
-// Convert price to pips (for forex pairs)
+// Convert price to pips (auto-detect pair type)
 price_to_pips(float price_diff) =>
-    // Detect if it's JPY pair (2 decimals) or regular (4-5 decimals)
     pip_size = syminfo.mintick >= 0.01 ? 0.01 : 0.0001
     math.abs(price_diff) / pip_size
 
+// Get pip size for current symbol
+get_pip_size() =>
+    syminfo.mintick >= 0.01 ? 0.01 : 0.0001
+
 // ============================================================================
-// FVG DETECTION LOGIC (sama dengan poi_detector.py)
+// FVG DETECTION LOGIC (sama dengan poi_detector.py lines 645-680)
 // ============================================================================
 
-// Candle references:
-// [2] = candle 0 (oldest)
-// [1] = candle 1 (middle)
-// [0] = candle 2 (newest/current)
+// Python reference:
+// c0_high = highs[i-2]  -> high[2] in Pine
+// c0_low = lows[i-2]    -> low[2] in Pine
+// c2_high = highs[i]    -> high[0] in Pine
+// c2_low = lows[i]      -> low[0] in Pine
 
-// Bullish FVG: Gap up - Low of candle 2 > High of candle 0
+// Bullish FVG: Gap up - low[0] > high[2]
+// Python: if c2_low > c0_high:
 bullish_fvg_detected() =>
-    fvg_high = low      // Low of current candle (top of gap)
-    fvg_low = high[2]   // High of candle 2 bars ago (bottom of gap)
-    gap_size = price_to_pips(fvg_high - fvg_low)
-    (fvg_high > fvg_low and gap_size >= min_fvg_pips)
+    fvg_top = low       // Current candle low = top of gap
+    fvg_bottom = high[2] // 2 bars ago high = bottom of gap
+    gap_size = price_to_pips(fvg_top - fvg_bottom)
+    (fvg_top > fvg_bottom and gap_size >= min_fvg_pips)
 
-// Bearish FVG: Gap down - High of candle 2 < Low of candle 0
+// Bearish FVG: Gap down - high[0] < low[2]
+// Python: if c2_high < c0_low:
 bearish_fvg_detected() =>
-    fvg_high = low[2]   // Low of candle 2 bars ago (top of gap)
-    fvg_low = high      // High of current candle (bottom of gap)
-    gap_size = price_to_pips(fvg_high - fvg_low)
-    (fvg_high > fvg_low and gap_size >= min_fvg_pips)
+    fvg_top = low[2]    // 2 bars ago low = top of gap
+    fvg_bottom = high   // Current candle high = bottom of gap
+    gap_size = price_to_pips(fvg_top - fvg_bottom)
+    (fvg_top > fvg_bottom and gap_size >= min_fvg_pips)
 
 // Get FVG boundaries
+// Python: FairValueGap(high=c2_low, low=c0_high) for bullish
 get_bull_fvg() =>
-    [low, high[2]]  // [top, bottom]
+    [low, high[2]]  // [top, bottom] - sama dengan Python
 
+// Python: FairValueGap(high=c0_low, low=c2_high) for bearish
 get_bear_fvg() =>
-    [low[2], high]  // [top, bottom]
+    [low[2], high]  // [top, bottom] - sama dengan Python
 
 // ============================================================================
 // FVG STORAGE & MANAGEMENT
 // ============================================================================
 
-// Arrays to store FVG data
 var box[] bull_fvg_boxes = array.new_box()
 var box[] bear_fvg_boxes = array.new_box()
 var line[] bull_ce_lines = array.new_line()
@@ -93,6 +98,8 @@ var int[] bull_fvg_bars = array.new_int()
 var int[] bear_fvg_bars = array.new_int()
 var bool[] bull_fvg_filled = array.new_bool()
 var bool[] bear_fvg_filled = array.new_bool()
+var float[] bull_fvg_fill_pct = array.new_float()
+var float[] bear_fvg_fill_pct = array.new_float()
 
 // ============================================================================
 // CREATE NEW FVGs
@@ -134,6 +141,7 @@ if bullish_fvg_detected()
     array.push(bull_fvg_lows, fvg_bottom)
     array.push(bull_fvg_bars, fvg_bar)
     array.push(bull_fvg_filled, false)
+    array.push(bull_fvg_fill_pct, 0.0)
 
     // Add label
     if show_labels
@@ -150,7 +158,7 @@ if bullish_fvg_detected()
 // Detect and create Bearish FVG
 if bearish_fvg_detected()
     [fvg_top, fvg_bottom] = get_bear_fvg()
-    fvg_bar = bar_index - 1  // FVG is at the middle candle
+    fvg_bar = bar_index - 1
 
     // Create box
     new_box = box.new(
@@ -183,6 +191,7 @@ if bearish_fvg_detected()
     array.push(bear_fvg_lows, fvg_bottom)
     array.push(bear_fvg_bars, fvg_bar)
     array.push(bear_fvg_filled, false)
+    array.push(bear_fvg_fill_pct, 0.0)
 
     // Add label
     if show_labels
@@ -198,6 +207,7 @@ if bearish_fvg_detected()
 
 // ============================================================================
 // UPDATE FVGs (Extend & Check Fill Status)
+// Same logic as Python poi_detector.py lines 709-719
 // ============================================================================
 
 // Update Bullish FVGs
@@ -221,15 +231,19 @@ if array.size(bull_fvg_boxes) > 0
             array.remove(bull_fvg_lows, i)
             array.remove(bull_fvg_bars, i)
             array.remove(bull_fvg_filled, i)
+            array.remove(bull_fvg_fill_pct, i)
             continue
 
-        // Check fill status (price enters and fills the gap)
+        // Check fill status (Python logic lines 709-719)
+        // Python: if fvg.contains_price(current_price):
+        //         fill_pct = (fvg.high - current_price) / (fvg.high - fvg.low)
         if not is_filled
-            // Calculate how much of FVG has been filled
             fvg_size = fvg_top - fvg_bottom
-            if low <= fvg_top  // Price entered the FVG
-                fill_amount = fvg_top - math.max(low, fvg_bottom)
+            // Price entered the FVG from above (retracement)
+            if low <= fvg_top and low >= fvg_bottom
+                fill_amount = fvg_top - low
                 fill_pct = (fill_amount / fvg_size) * 100
+                array.set(bull_fvg_fill_pct, i, fill_pct)
 
                 if fill_pct >= fill_threshold
                     array.set(bull_fvg_filled, i, true)
@@ -249,9 +263,10 @@ if array.size(bull_fvg_boxes) > 0
                         array.remove(bull_fvg_lows, i)
                         array.remove(bull_fvg_bars, i)
                         array.remove(bull_fvg_filled, i)
+                        array.remove(bull_fvg_fill_pct, i)
                         continue
 
-        // Extend box and CE line to current bar
+        // Extend box and CE line
         if extend_fvg and not array.get(bull_fvg_filled, i)
             box.set_right(fvg_box, bar_index + 10)
             if not na(ce_line)
@@ -267,7 +282,7 @@ if array.size(bear_fvg_boxes) > 0
         is_filled = array.get(bear_fvg_filled, i)
         ce_line = array.get(bear_ce_lines, i)
 
-        // Check age - remove if too old
+        // Check age
         if bar_index - fvg_bar > max_fvg_age
             box.delete(fvg_box)
             if not na(ce_line)
@@ -278,15 +293,18 @@ if array.size(bear_fvg_boxes) > 0
             array.remove(bear_fvg_lows, i)
             array.remove(bear_fvg_bars, i)
             array.remove(bear_fvg_filled, i)
+            array.remove(bear_fvg_fill_pct, i)
             continue
 
-        // Check fill status (price enters and fills the gap)
+        // Check fill status
+        // Python: fill_pct = (current_price - fvg.low) / (fvg.high - fvg.low)
         if not is_filled
-            // Calculate how much of FVG has been filled
             fvg_size = fvg_top - fvg_bottom
-            if high >= fvg_bottom  // Price entered the FVG
-                fill_amount = math.min(high, fvg_top) - fvg_bottom
+            // Price entered the FVG from below (retracement)
+            if high >= fvg_bottom and high <= fvg_top
+                fill_amount = high - fvg_bottom
                 fill_pct = (fill_amount / fvg_size) * 100
+                array.set(bear_fvg_fill_pct, i, fill_pct)
 
                 if fill_pct >= fill_threshold
                     array.set(bear_fvg_filled, i, true)
@@ -306,9 +324,10 @@ if array.size(bear_fvg_boxes) > 0
                         array.remove(bear_fvg_lows, i)
                         array.remove(bear_fvg_bars, i)
                         array.remove(bear_fvg_filled, i)
+                        array.remove(bear_fvg_fill_pct, i)
                         continue
 
-        // Extend box and CE line to current bar
+        // Extend box and CE line
         if extend_fvg and not array.get(bear_fvg_filled, i)
             box.set_right(fvg_box, bar_index + 10)
             if not na(ce_line)
@@ -318,7 +337,6 @@ if array.size(bear_fvg_boxes) > 0
 // ALERTS
 // ============================================================================
 
-// Alert when price enters active Bullish FVG (potential BUY zone)
 price_in_bull_fvg = false
 if array.size(bull_fvg_boxes) > 0
     for i = 0 to array.size(bull_fvg_boxes) - 1
@@ -329,7 +347,6 @@ if array.size(bull_fvg_boxes) > 0
                 price_in_bull_fvg := true
                 break
 
-// Alert when price enters active Bearish FVG (potential SELL zone)
 price_in_bear_fvg = false
 if array.size(bear_fvg_boxes) > 0
     for i = 0 to array.size(bear_fvg_boxes) - 1
@@ -340,8 +357,8 @@ if array.size(bear_fvg_boxes) > 0
                 price_in_bear_fvg := true
                 break
 
-alertcondition(price_in_bull_fvg, title="Price at Bullish FVG", message="SURGE-WSI: Price entered Bullish FVG - Potential BUY zone")
-alertcondition(price_in_bear_fvg, title="Price at Bearish FVG", message="SURGE-WSI: Price entered Bearish FVG - Potential SELL zone")
+alertcondition(price_in_bull_fvg, title="Price at Bullish FVG", message="SURGE-WSI: Price at Bullish FVG - Potential BUY zone")
+alertcondition(price_in_bear_fvg, title="Price at Bearish FVG", message="SURGE-WSI: Price at Bearish FVG - Potential SELL zone")
 alertcondition(bullish_fvg_detected(), title="New Bullish FVG", message="SURGE-WSI: New Bullish FVG detected")
 alertcondition(bearish_fvg_detected(), title="New Bearish FVG", message="SURGE-WSI: New Bearish FVG detected")
 
@@ -363,53 +380,22 @@ if barstate.islast
         if not array.get(bear_fvg_filled, i)
             active_bear_count += 1
 
-    table.cell(info_table, 0, 0, "SURGE-WSI FVG", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 0, 0, "SURGE FVG v2", text_color=color.white, text_size=size.small)
     table.cell(info_table, 1, 0, "", text_color=color.white, text_size=size.small)
-    table.cell(info_table, 0, 1, "Active Bull FVG:", text_color=color.teal, text_size=size.tiny)
+    table.cell(info_table, 0, 1, "Bull FVG:", text_color=color.teal, text_size=size.tiny)
     table.cell(info_table, 1, 1, str.tostring(active_bull_count), text_color=color.teal, text_size=size.tiny)
-    table.cell(info_table, 0, 2, "Active Bear FVG:", text_color=color.maroon, text_size=size.tiny)
+    table.cell(info_table, 0, 2, "Bear FVG:", text_color=color.maroon, text_size=size.tiny)
     table.cell(info_table, 1, 2, str.tostring(active_bear_count), text_color=color.maroon, text_size=size.tiny)
     table.cell(info_table, 0, 3, "Min Size:", text_color=color.gray, text_size=size.tiny)
     table.cell(info_table, 1, 3, str.tostring(min_fvg_pips, "#.#") + " pips", text_color=color.gray, text_size=size.tiny)
     table.cell(info_table, 0, 4, "Max Age:", text_color=color.gray, text_size=size.tiny)
     table.cell(info_table, 1, 4, str.tostring(max_fvg_age) + " bars", text_color=color.gray, text_size=size.tiny)
-    table.cell(info_table, 0, 5, "Fill Threshold:", text_color=color.gray, text_size=size.tiny)
+    table.cell(info_table, 0, 5, "Fill %:", text_color=color.gray, text_size=size.tiny)
     table.cell(info_table, 1, 5, str.tostring(fill_threshold, "#") + "%", text_color=color.gray, text_size=size.tiny)
 
 // ============================================================================
-// PLOT SIGNALS (optional visual)
+// PLOT SIGNALS
 // ============================================================================
 
 plotshape(bullish_fvg_detected(), title="Bullish FVG Signal", location=location.belowbar, style=shape.diamond, size=size.tiny, color=color.teal)
 plotshape(bearish_fvg_detected(), title="Bearish FVG Signal", location=location.abovebar, style=shape.diamond, size=size.tiny, color=color.maroon)
-
-// ============================================================================
-// EDUCATIONAL: FVG EXPLANATION
-// ============================================================================
-//
-// Fair Value Gap (FVG) adalah area imbalance dimana harga bergerak terlalu
-// cepat sehingga meninggalkan "gap" dalam price action.
-//
-// BULLISH FVG:
-//   Candle 0    Candle 1    Candle 2
-//   +---+                    +---+
-//   |   |                    | ^ |
-//   |   |        +---+       |   |
-//   |   |        |   |  ---> +---+ Low[0]
-//   +---+ High[2]|   |       ======== <- FVG Zone
-//   ============ +---+
-//   Gap = Low[0] - High[2]
-//
-// BEARISH FVG:
-//   Candle 0    Candle 1    Candle 2
-//   +---+
-//   |   |                    ======== <- FVG Zone
-//   |   |        +---+       +---+ High[0]
-//   |   |        |   |  ---> |   |
-//   +---+ Low[2] |   |       | v |
-//   ============ +---+       +---+
-//   Gap = Low[2] - High[0]
-//
-// Price cenderung kembali ke FVG untuk "fill the gap" sebelum
-// melanjutkan trend-nya.
-// ============================================================================
