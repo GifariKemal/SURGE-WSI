@@ -69,6 +69,86 @@ from executor import (
     BASE_QUALITY, MIN_QUALITY_GOOD, MAX_QUALITY_BAD
 )
 from src.utils.telegram import TelegramNotifier, TelegramFormatter
+import MetaTrader5 as mt5
+
+# ============================================================
+# METAQUOTES ENFORCEMENT - This strategy requires MetaQuotes-Demo
+# ============================================================
+REQUIRED_BROKER = "MetaQuotes"  # Must contain this string
+FORBIDDEN_BROKER = "Finex"      # Must NOT contain this string
+METAQUOTES_TERMINAL_PATH = r"C:\Program Files\MetaTrader 5\terminal64.exe"
+
+
+def ensure_metaquotes_connection() -> bool:
+    """
+    Ensure we're connected to MetaQuotes-Demo, NOT Finex.
+
+    Returns:
+        True if connected to MetaQuotes, False otherwise
+    """
+    # First, try to connect to whatever is running
+    if mt5.initialize():
+        account_info = mt5.account_info()
+        terminal_info = mt5.terminal_info()
+
+        if account_info and terminal_info:
+            server = account_info.server
+            terminal_name = terminal_info.name
+
+            logger.info(f"Detected: {terminal_name} - Account: {account_info.login} @ {server}")
+
+            # Check if it's Finex (forbidden)
+            if FORBIDDEN_BROKER.lower() in server.lower() or FORBIDDEN_BROKER.lower() in terminal_name.lower():
+                logger.warning(f"[!] Finex detected! This strategy requires MetaQuotes-Demo.")
+                logger.warning(f"[!] Disconnecting from Finex and trying MetaQuotes...")
+                mt5.shutdown()
+
+                # Try to connect to MetaQuotes specifically
+                if Path(METAQUOTES_TERMINAL_PATH).exists():
+                    logger.info(f"Attempting to connect to MetaQuotes: {METAQUOTES_TERMINAL_PATH}")
+                    if mt5.initialize(path=METAQUOTES_TERMINAL_PATH):
+                        account_info = mt5.account_info()
+                        if account_info:
+                            # Verify it's now MetaQuotes
+                            if FORBIDDEN_BROKER.lower() not in account_info.server.lower():
+                                logger.info(f"[OK] Connected to MetaQuotes: {account_info.login} @ {account_info.server}")
+                                return True
+                            else:
+                                logger.error(f"[!] Still got Finex after switching!")
+                                mt5.shutdown()
+                                return False
+                    else:
+                        logger.error(f"[!] Failed to connect to MetaQuotes terminal")
+                        logger.error(f"[!] Please open MetaQuotes MT5 and login to MetaQuotes-Demo account")
+                        return False
+                else:
+                    logger.error(f"[!] MetaQuotes terminal not found at: {METAQUOTES_TERMINAL_PATH}")
+                    logger.error(f"[!] Please install MetaQuotes MT5 or close Finex and open MetaQuotes manually")
+                    return False
+
+            # Check if it's MetaQuotes (required) or at least not Finex
+            if REQUIRED_BROKER.lower() in server.lower() or REQUIRED_BROKER.lower() in terminal_name.lower():
+                logger.info(f"[OK] MetaQuotes connection verified")
+                return True
+
+            # Not Finex, not explicitly MetaQuotes - warn but allow
+            logger.warning(f"[?] Unknown broker: {server}")
+            logger.warning(f"[?] This strategy is optimized for MetaQuotes-Demo")
+            logger.warning(f"[?] Proceeding anyway, but results may differ from backtest")
+            return True
+
+    # Initial connection failed, try MetaQuotes directly
+    logger.warning("No MT5 terminal detected, trying MetaQuotes...")
+    if Path(METAQUOTES_TERMINAL_PATH).exists():
+        if mt5.initialize(path=METAQUOTES_TERMINAL_PATH):
+            account_info = mt5.account_info()
+            if account_info:
+                logger.info(f"[OK] Connected to MetaQuotes: {account_info.login} @ {account_info.server}")
+                return True
+
+    logger.error("[!] Failed to connect to any MT5 terminal")
+    logger.error("[!] Please open MetaQuotes MT5 and login to MetaQuotes-Demo account")
+    return False
 
 
 class BrokerAdapter:
@@ -169,18 +249,35 @@ class TradingBot:
         if not await self.db.connect():
             raise RuntimeError("Failed to connect to database")
 
-        # Initialize broker (MT5 Connector with Adapter)
+        # ============================================================
+        # METAQUOTES ENFORCEMENT
+        # This strategy REQUIRES MetaQuotes-Demo, NOT Finex
+        # ============================================================
+        logger.info("Checking MT5 connection (MetaQuotes required)...")
+
+        if not ensure_metaquotes_connection():
+            raise RuntimeError(
+                "\n" + "="*60 + "\n"
+                "[ERROR] This strategy requires MetaQuotes-Demo account!\n"
+                "\n"
+                "Please do ONE of the following:\n"
+                "1. Close Finex MT5 and open MetaQuotes MT5\n"
+                "2. Login to MetaQuotes-Demo account\n"
+                "3. Install MetaQuotes MT5 from metaquotes.net\n"
+                "\n"
+                "MetaQuotes Terminal Path:\n"
+                f"  {METAQUOTES_TERMINAL_PATH}\n"
+                + "="*60
+            )
+
+        # Create MT5Connector wrapper (connection already established)
         mt5_connector = MT5Connector(
             login=config.mt5.login,
             password=config.mt5.password,
             server=config.mt5.server,
             terminal_path=config.mt5.terminal_path
         )
-
-        logger.info(f"MT5 Config: server={config.mt5.server}, login={config.mt5.login or 'auto'}")
-
-        if not mt5_connector.connect():
-            raise RuntimeError("Failed to connect to MT5. Make sure MT5 terminal is running and logged in.")
+        mt5_connector.connected = True  # Already connected by ensure_metaquotes_connection()
 
         self.mt5 = mt5_connector
 
