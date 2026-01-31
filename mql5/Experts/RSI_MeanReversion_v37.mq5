@@ -13,6 +13,7 @@
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
 #include <Trade\AccountInfo.mqh>
+#include <Trade\DealInfo.mqh>
 
 //--- Input Parameters
 input group "=== RSI Settings ==="
@@ -86,7 +87,11 @@ int OnInit()
    //--- Initialize trade object
    trade.SetExpertMagicNumber(Magic_Number);
    trade.SetDeviationInPoints(10);
-   trade.SetTypeFilling(ORDER_FILLING_IOC);
+
+   //--- Set order filling type based on broker support
+   ENUM_ORDER_TYPE_FILLING filling = GetSupportedFilling();
+   trade.SetTypeFilling(filling);
+   Print("Order filling type: ", EnumToString(filling));
 
    //--- Initialize daily tracking
    dailyStartBalance = accInfo.Balance();
@@ -167,6 +172,20 @@ void OnTick()
    //--- ATR filter
    if(atrPercentile < ATR_Min_Pct || atrPercentile > ATR_Max_Pct) return;
 
+   //--- Spread filter: max 30% of ATR
+   double spread = SymbolInfoInteger(_Symbol, SYMBOL_SPREAD) * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   double maxSpread = currentATR * 0.3;
+   if(spread > maxSpread)
+   {
+      static datetime lastSpreadWarn = 0;
+      if(TimeCurrent() - lastSpreadWarn > 3600) // Warn once per hour
+      {
+         Print("Spread too wide: ", spread, " > ", maxSpread);
+         lastSpreadWarn = TimeCurrent();
+      }
+      return;
+   }
+
    //--- Generate signal
    int signal = 0;
    if(currentRSI < RSI_Oversold) signal = 1;       // BUY
@@ -181,15 +200,17 @@ void OnTick()
    double tpMultiplier = GetTPMultiplier(atrPercentile, currentHour);
    double sl, tp;
 
+   int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+
    if(signal == 1) // BUY
    {
-      sl = entryPrice - currentATR * SL_Multiplier;
-      tp = entryPrice + currentATR * tpMultiplier;
+      sl = NormalizeDouble(entryPrice - currentATR * SL_Multiplier, digits);
+      tp = NormalizeDouble(entryPrice + currentATR * tpMultiplier, digits);
    }
    else // SELL
    {
-      sl = entryPrice + currentATR * SL_Multiplier;
-      tp = entryPrice - currentATR * tpMultiplier;
+      sl = NormalizeDouble(entryPrice + currentATR * SL_Multiplier, digits);
+      tp = NormalizeDouble(entryPrice - currentATR * tpMultiplier, digits);
    }
 
    //--- Calculate lot size
@@ -218,21 +239,23 @@ void OnTick()
 }
 
 //+------------------------------------------------------------------+
-//| Calculate ATR Percentile                                          |
+//| Calculate ATR Percentile: % of historical values below current    |
 //+------------------------------------------------------------------+
 double CalculateATRPercentile()
 {
-   if(ArraySize(atrHistory) < ATR_Lookback) return 50.0;
+   if(ArraySize(atrHistory) < ATR_Lookback + 1) return 50.0;
 
-   double currentATR = atrHistory[1];
+   double currentATR = atrHistory[1];  // Current bar's ATR
    int countBelow = 0;
+   int historyCount = ATR_Lookback - 1;  // Exclude current value
 
-   for(int i = 1; i <= ATR_Lookback; i++)
+   // Compare against historical values only (skip current at index 1)
+   for(int i = 2; i <= ATR_Lookback; i++)
    {
       if(atrHistory[i] < currentATR) countBelow++;
    }
 
-   return (double)countBelow / ATR_Lookback * 100.0;
+   return historyCount > 0 ? (double)countBelow / historyCount * 100.0 : 50.0;
 }
 
 //+------------------------------------------------------------------+
@@ -251,6 +274,22 @@ double GetTPMultiplier(double atrPct, int hour)
       return baseTP + TP_Time_Bonus;
 
    return baseTP;
+}
+
+//+------------------------------------------------------------------+
+//| Get supported order filling type                                   |
+//+------------------------------------------------------------------+
+ENUM_ORDER_TYPE_FILLING GetSupportedFilling()
+{
+   uint filling_modes = (uint)SymbolInfoInteger(_Symbol, SYMBOL_FILLING_MODE);
+
+   if((filling_modes & SYMBOL_FILLING_FOK) == SYMBOL_FILLING_FOK)
+      return ORDER_FILLING_FOK;
+
+   if((filling_modes & SYMBOL_FILLING_IOC) == SYMBOL_FILLING_IOC)
+      return ORDER_FILLING_IOC;
+
+   return ORDER_FILLING_RETURN;
 }
 
 //+------------------------------------------------------------------+

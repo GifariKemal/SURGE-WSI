@@ -43,12 +43,20 @@ def get_h1_data(symbol, start_date, end_date):
 
 def run_backtest(df):
     """Run RSI v3.7 backtest"""
-    # RSI(10)
+    # RSI(10) using Wilder's smoothing (EMA with alpha=1/period)
+    rsi_period = 10
     delta = df['close'].diff()
-    gain = delta.where(delta > 0, 0).rolling(10).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(10).mean()
-    rs = np.where(loss == 0, 100, gain / loss)
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+
+    # Wilder's smoothing: EMA with alpha = 1/period
+    avg_gain = gain.ewm(alpha=1/rsi_period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/rsi_period, adjust=False).mean()
+
+    # Safe division: when avg_loss is 0, RSI = 100
+    rs = avg_gain / avg_loss
     df['rsi'] = 100 - (100 / (1 + rs))
+    df['rsi'] = df['rsi'].fillna(50)  # Fill initial NaN with neutral value
 
     # ATR(14)
     tr = np.maximum(df['high'] - df['low'],
@@ -56,9 +64,15 @@ def run_backtest(df):
                               abs(df['low'] - df['close'].shift(1))))
     df['atr'] = tr.rolling(14).mean()
 
-    # ATR Percentile
-    df['atr_pct'] = df['atr'].rolling(100).apply(
-        lambda x: (x.argsort().argsort()[-1] + 1) / len(x) * 100, raw=True)
+    # ATR Percentile: What % of historical values are below current value
+    def atr_percentile(x):
+        if len(x) == 0:
+            return 50.0
+        current = x[-1]
+        count_below = (x[:-1] < current).sum()  # Compare against historical only
+        return (count_below / (len(x) - 1)) * 100 if len(x) > 1 else 50.0
+
+    df['atr_pct'] = df['atr'].rolling(100).apply(atr_percentile, raw=True)
 
     df['hour'] = df.index.hour
     df['weekday'] = df.index.weekday

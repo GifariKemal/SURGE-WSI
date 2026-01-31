@@ -231,12 +231,19 @@ class RSIMeanReversionV37:
     # =========================================================================
 
     def _calculate_rsi(self, close: pd.Series) -> pd.Series:
-        """Calculate RSI(10) using SMA method"""
+        """Calculate RSI using Wilder's smoothing (standard method)"""
         delta = close.diff()
-        gain = delta.where(delta > 0, 0).rolling(self.RSI_PERIOD).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(self.RSI_PERIOD).mean()
-        rs = gain / (loss + 1e-10)
-        return 100 - (100 / (1 + rs))
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+
+        # Wilder's smoothing: EMA with alpha = 1/period
+        avg_gain = gain.ewm(alpha=1/self.RSI_PERIOD, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1/self.RSI_PERIOD, adjust=False).mean()
+
+        # Safe division
+        rs = avg_gain / (avg_loss + 1e-10)
+        rsi = 100 - (100 / (1 + rs))
+        return rsi.fillna(50)  # Fill initial NaN with neutral value
 
     def _calculate_atr(self, high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
         """Calculate ATR(14)"""
@@ -250,11 +257,15 @@ class RSIMeanReversionV37:
         return tr.rolling(self.ATR_PERIOD).mean()
 
     def _calculate_atr_percentile(self, atr: pd.Series) -> pd.Series:
-        """Calculate ATR percentile over rolling window"""
-        return atr.rolling(self.ATR_LOOKBACK).apply(
-            lambda x: pd.Series(x).rank(pct=True).iloc[-1] * 100,
-            raw=False
-        )
+        """Calculate ATR percentile: % of historical values below current"""
+        def atr_percentile(x):
+            if len(x) <= 1:
+                return 50.0
+            current = x[-1]
+            count_below = (x[:-1] < current).sum()  # Compare against historical only
+            return (count_below / (len(x) - 1)) * 100
+
+        return atr.rolling(self.ATR_LOOKBACK).apply(atr_percentile, raw=True)
 
     def _update_indicators(self, df: pd.DataFrame):
         """Update all indicators from OHLCV data"""
@@ -351,12 +362,18 @@ class RSIMeanReversionV37:
             logger.warning(f"Invalid SL distance: {sl_distance}")
             return None
 
-        # Lot size = Risk / (SL pips * pip value * contract size)
-        sl_pips = sl_distance / self._pip_value
-        lot_size = risk_amount / (sl_pips * self._pip_value * self._contract_size)
+        # Lot size = Risk / (SL distance in price * contract size)
+        # For GBPUSD: contract_size = 100,000, sl_distance in price units
+        # Example: $100 risk, 0.0015 SL distance, 100k contract
+        #          lot_size = 100 / (0.0015 * 100000) = 0.67 lots
+        lot_size = risk_amount / (sl_distance * self._contract_size)
 
-        # Clamp to valid range
+        # Clamp to valid range (0.01 to 10.0 lots)
+        original_lot_size = lot_size
         lot_size = max(0.01, min(10.0, round(lot_size, 2)))
+
+        if lot_size != round(original_lot_size, 2):
+            logger.warning(f"Lot size clamped: {original_lot_size:.4f} -> {lot_size}")
 
         return lot_size
 

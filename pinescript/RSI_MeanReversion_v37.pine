@@ -8,9 +8,9 @@ strategy("RSI Mean Reversion v3.7",
      initial_capital=10000,
      default_qty_type=strategy.percent_of_equity,
      default_qty_value=1,
-     commission_type=strategy.commission.cash_per_order,
-     commission_value=0,
-     slippage=1,
+     commission_type=strategy.commission.cash_per_contract,
+     commission_value=7,          // $7 per standard lot per side (typical forex)
+     slippage=10,                 // 10 ticks = 1 pip (for 5-digit broker)
      pyramiding=0,
      calc_on_every_tick=false,
      process_orders_on_close=true)
@@ -68,14 +68,17 @@ rsi = ta.rsi(close, rsiPeriod)
 // ATR Calculation
 atr = ta.atr(atrPeriod)
 
-// ATR Percentile Calculation
+// ATR Percentile: % of historical values below current value
 atrPercentile(src, len) =>
-    count = 0
-    for i = 1 to len
-        if src[i] < src
-            count += 1
-    result = count / len * 100
-    result
+    if len <= 0
+        50.0
+    else
+        count = 0
+        for i = 1 to len  // Compare against last 'len' bars (historical only)
+            if src[i] < src  // src is current bar value
+                count += 1
+        result = count / len * 100.0
+        result
 
 atrPct = atrPercentile(atr, atrLookback)
 
@@ -119,36 +122,52 @@ tpMult = getTPMultiplier()
 buySignal = canTrade and rsi < rsiOversold and strategy.position_size == 0
 sellSignal = canTrade and rsi > rsiOverbought and strategy.position_size == 0
 
-// SL/TP Levels
-longSL = close - atr * slMult
-longTP = close + atr * tpMult
-shortSL = close + atr * slMult
-shortTP = close - atr * tpMult
+// Persistent SL/TP Levels (stored at entry, not recalculated each bar)
+var float storedSL = na
+var float storedTP = na
 
 // Track position entry bar
 var int entryBar = na
-if strategy.position_size != 0 and strategy.position_size[1] == 0
-    entryBar := bar_index
-
-// Max holding exit
-barsInPosition = strategy.position_size != 0 ? bar_index - entryBar : 0
-maxHoldingExit = barsInPosition >= maxHoldingBars
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STRATEGY EXECUTION
 // ══════════════════════════════════════════════════════════════════════════════
 
+// Entry logic - store SL/TP at entry time
 if buySignal
+    storedSL := close - atr * slMult
+    storedTP := close + atr * tpMult
+    entryBar := bar_index
     strategy.entry("Long", strategy.long)
-    strategy.exit("Long Exit", "Long", stop=longSL, limit=longTP)
 
-if sellSignal
+else if sellSignal
+    storedSL := close + atr * slMult
+    storedTP := close - atr * tpMult
+    entryBar := bar_index
     strategy.entry("Short", strategy.short)
-    strategy.exit("Short Exit", "Short", stop=shortSL, limit=shortTP)
 
-// Max holding period exit
+// Exit management (separate from entry signals)
+if strategy.position_size > 0 and not na(storedSL) and not na(storedTP)
+    strategy.exit("Long Exit", "Long", stop=storedSL, limit=storedTP)
+
+if strategy.position_size < 0 and not na(storedSL) and not na(storedTP)
+    strategy.exit("Short Exit", "Short", stop=storedSL, limit=storedTP)
+
+// Max holding exit with safety check
+barsInPosition = strategy.position_size != 0 and not na(entryBar) ? bar_index - entryBar : 0
+maxHoldingExit = barsInPosition >= maxHoldingBars and strategy.position_size != 0
+
 if maxHoldingExit
     strategy.close_all(comment="Timeout")
+    entryBar := na
+    storedSL := na
+    storedTP := na
+
+// Reset stored values when position closes
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    entryBar := na
+    storedSL := na
+    storedTP := na
 
 // ══════════════════════════════════════════════════════════════════════════════
 // VISUALIZATION
@@ -180,24 +199,24 @@ if showSLTP
     if not na(tpLabel)
         label.delete(tpLabel)
 
-    if strategy.position_size > 0  // Long position
-        slLine := line.new(bar_index - 10, longSL, bar_index + 10, longSL,
+    if strategy.position_size > 0 and not na(storedSL) and not na(storedTP)  // Long position
+        slLine := line.new(bar_index - 10, storedSL, bar_index + 10, storedSL,
              color=color.red, style=line.style_dashed, width=1)
-        tpLine := line.new(bar_index - 10, longTP, bar_index + 10, longTP,
+        tpLine := line.new(bar_index - 10, storedTP, bar_index + 10, storedTP,
              color=color.green, style=line.style_dashed, width=1)
-        slLabel := label.new(bar_index + 11, longSL, "SL",
+        slLabel := label.new(bar_index + 11, storedSL, "SL",
              color=color.red, textcolor=color.white, size=size.tiny)
-        tpLabel := label.new(bar_index + 11, longTP, "TP",
+        tpLabel := label.new(bar_index + 11, storedTP, "TP",
              color=color.green, textcolor=color.white, size=size.tiny)
 
-    else if strategy.position_size < 0  // Short position
-        slLine := line.new(bar_index - 10, shortSL, bar_index + 10, shortSL,
+    else if strategy.position_size < 0 and not na(storedSL) and not na(storedTP)  // Short position
+        slLine := line.new(bar_index - 10, storedSL, bar_index + 10, storedSL,
              color=color.red, style=line.style_dashed, width=1)
-        tpLine := line.new(bar_index - 10, shortTP, bar_index + 10, shortTP,
+        tpLine := line.new(bar_index - 10, storedTP, bar_index + 10, storedTP,
              color=color.green, style=line.style_dashed, width=1)
-        slLabel := label.new(bar_index + 11, shortSL, "SL",
+        slLabel := label.new(bar_index + 11, storedSL, "SL",
              color=color.red, textcolor=color.white, size=size.tiny)
-        tpLabel := label.new(bar_index + 11, shortTP, "TP",
+        tpLabel := label.new(bar_index + 11, storedTP, "TP",
              color=color.green, textcolor=color.white, size=size.tiny)
 
 // Background color for trading hours
