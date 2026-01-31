@@ -245,17 +245,17 @@ def export_results(results, trades_df, equity_df):
     os.makedirs(output_dir, exist_ok=True)
 
     # Export trades to CSV
-    trades_df.to_csv(f"{output_dir}/RSI_v37_trades_2020_2026.csv", index=False)
+    trades_df.to_csv(f"{output_dir}/RSI_v37_trades_2025_2026.csv", index=False)
 
     # Export equity curve
-    equity_df.to_csv(f"{output_dir}/RSI_v37_equity_2020_2026.csv", index=False)
+    equity_df.to_csv(f"{output_dir}/RSI_v37_equity_2025_2026.csv", index=False)
 
     # Export summary
-    with open(f"{output_dir}/RSI_v37_summary_2020_2026.txt", 'w') as f:
+    with open(f"{output_dir}/RSI_v37_summary_2025_2026.txt", 'w') as f:
         f.write("=" * 60 + "\n")
         f.write("RSI MEAN REVERSION v3.7 - BACKTEST REPORT\n")
         f.write("=" * 60 + "\n")
-        f.write(f"Period: 2020-01-01 to 2026-01-31 (6 Years)\n")
+        f.write(f"Period: 2025-01-01 to 2026-01-31\n")
         f.write(f"Symbol: GBPUSD H1\n")
         f.write(f"Data Source: Finex MT5 Demo\n")
         f.write("\n")
@@ -305,7 +305,7 @@ def export_results(results, trades_df, equity_df):
 def main():
     print("=" * 60)
     print("RSI v3.7 BACKTEST - MT5 DATA (Finex)")
-    print("Period: 2020-01-01 to 2026-01-31 (6 Years)")
+    print("Period: 2025-01-01 to 2026-01-31")
     print("=" * 60)
 
     # Connect to MT5
@@ -316,7 +316,7 @@ def main():
     try:
         # Get H1 data
         print("\nFetching GBPUSD H1 data from MT5...")
-        start_date = datetime(2019, 10, 1, tzinfo=timezone.utc)  # Extra for warmup
+        start_date = datetime(2024, 10, 1, tzinfo=timezone.utc)  # Extra for warmup
         end_date = datetime(2026, 1, 31, 23, 59, tzinfo=timezone.utc)
 
         df = get_h1_data("GBPUSD", start_date, end_date)
