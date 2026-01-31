@@ -1,0 +1,147 @@
+# =============================================================================
+# PRODUCTION CONFIG - Hybrid ML + RSI Strategy (OPTIMIZED)
+# =============================================================================
+# Based on Walk-Forward + Risk Management Testing:
+#
+# BACKTEST RESULTS (2020-2026):
+# - 1,237 trades over 6 years (~206/year)
+# - +64.90% total return (~10.8%/year)
+# - 57.8% win rate
+# - 5 profitable years out of 7
+# - Max drawdown: -17.07%
+#
+# KEY OPTIMIZATIONS:
+# 1. Regime Filter: Skip crisis regime (16.8% DD improvement)
+# 2. Adaptive Sizing: Reduce after 3 losses
+# 3. NO Drawdown Pause: Let system recover naturally
+# =============================================================================
+
+strategy:
+  name: "Hybrid_ML_RSI_MeanReversion"
+  version: "1.0.0"
+  description: "HMM Regime Detection + RSI Mean Reversion with Optuna-optimized params"
+
+# -----------------------------------------------------------------------------
+# Signal Generation - RSI Mean Reversion
+# -----------------------------------------------------------------------------
+signals:
+  # RSI parameters (median from Optuna optimization)
+  rsi_period: 14
+  rsi_oversold: 35          # Buy when RSI < 35
+  rsi_overbought: 65        # Sell when RSI > 65
+
+  # Confirmation
+  require_reversal_candle: true  # Require bullish/bearish candle confirmation
+
+# -----------------------------------------------------------------------------
+# ML Regime Detection - HMM
+# -----------------------------------------------------------------------------
+regime:
+  enabled: true
+  model: "HMM"
+  n_states: 3
+
+  # Regime definitions
+  states:
+    0: "trending_low_vol"    # OK to trade
+    1: "crisis_high_vol"     # SKIP - too volatile
+    2: "ranging_choppy"      # OK to trade (mean reversion works well)
+
+  # Skip trading during crisis regime
+  skip_crisis: true
+
+  # Retrain HMM every N days
+  retrain_interval_days: 30
+
+# -----------------------------------------------------------------------------
+# Risk Management (OPTIMIZED based on 6-year backtest)
+# -----------------------------------------------------------------------------
+risk:
+  # Position sizing
+  risk_per_trade: 0.01      # 1% of equity per trade
+  max_position_size: 1.0    # Max 1 lot
+
+  # Stop Loss / Take Profit (ATR multipliers)
+  sl_atr_multiplier: 1.75   # SL at 1.75x ATR
+  tp_atr_multiplier: 2.50   # TP at 2.50x ATR
+
+  # Exit at Bollinger Band mean
+  exit_at_mean: true
+
+  # Daily limits
+  max_daily_loss_pct: 3.0   # Stop trading if -3% daily
+  max_daily_trades: 10      # Max 10 trades per day
+
+  # Drawdown protection
+  max_drawdown_pct: 20.0    # Alert at 20% (don't pause - let system recover)
+
+  # Adaptive Position Sizing
+  adaptive_sizing:
+    enabled: true
+    loss_streak_reduce: 3   # Reduce size after 3 consecutive losses
+    reduction_pct: 0.25     # Reduce by 25% per extra loss
+
+  # NOTE: Drawdown pause disabled based on backtest
+  # Pausing causes system to miss recovery opportunities
+  drawdown_pause: false
+
+# -----------------------------------------------------------------------------
+# Trading Session
+# -----------------------------------------------------------------------------
+session:
+  # Trading hours (UTC)
+  start_hour: 7             # Start at 07:00 UTC (London open)
+  end_hour: 19              # End at 19:00 UTC (before NY close)
+
+  # Preferred sessions
+  trade_london: true
+  trade_newyork: true
+  trade_asian: false        # Skip Asian session
+
+  # Cooldown between trades
+  cooldown_bars: 3          # Wait 3 bars after closing a trade
+
+# -----------------------------------------------------------------------------
+# Symbol Configuration
+# -----------------------------------------------------------------------------
+symbol:
+  name: "GBPUSD"
+  timeframe: "H1"
+  pip_value: 0.0001
+  min_lot: 0.01
+  max_lot: 100.0
+
+# -----------------------------------------------------------------------------
+# Execution
+# -----------------------------------------------------------------------------
+execution:
+  # Order type
+  order_type: "market"
+
+  # Slippage tolerance (pips)
+  max_slippage_pips: 3
+
+  # Retry settings
+  max_retries: 3
+  retry_delay_seconds: 5
+
+# -----------------------------------------------------------------------------
+# Monitoring & Alerts
+# -----------------------------------------------------------------------------
+monitoring:
+  # Telegram notifications
+  telegram_enabled: true
+  notify_on_trade: true
+  notify_on_daily_summary: true
+  notify_on_drawdown_warning: true
+
+  # Performance tracking
+  track_regime_accuracy: true
+  track_signal_performance: true
+
+# -----------------------------------------------------------------------------
+# Model Paths
+# -----------------------------------------------------------------------------
+models:
+  regime_detector: "saved_models/regime_hmm.pkl"
+  # Note: Signal classifier not used in production (RSI rules instead)

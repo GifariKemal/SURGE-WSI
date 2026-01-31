@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with TimescaleDB (existing)
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: surge-timescaledb
+    environment:
+      POSTGRES_USER: surge_wsi
+      POSTGRES_PASSWORD: surge_wsi_secret
+      POSTGRES_DB: surge_wsi
+    ports:
+      - "5434:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U surge_wsi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Qdrant Vector Database (NEW)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: surge-qdrant
+    ports:
+      - "6333:6333"  # REST API
+      - "6334:6334"  # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache (existing)
+  redis:
+    image: redis:7-alpine
+    container_name: surge-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Data Sync Service (NEW)
+  data-sync:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.sync
+    container_name: surge-data-sync
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - POSTGRES_HOST=timescaledb
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=surge_wsi
+      - POSTGRES_USER=surge_wsi
+      - POSTGRES_PASSWORD=surge_wsi_secret
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SYNC_INTERVAL=60  # Sync every 60 seconds
+    volumes:
+      - ../cache:/app/cache
+    restart: unless-stopped
+
+volumes:
+  timescale_data:
+  qdrant_data:
+  redis_data:
+
+networks:
+  default:
+    name: surge-network

@@ -1,0 +1,158 @@
+# ML Trading Bot - Model Configuration
+# =====================================
+
+# Data Settings
+data:
+  symbol: "GBPUSD"
+  timeframe: "H1"
+  train_start: "2015-01-01"
+  train_end: "2023-12-31"
+  test_start: "2024-01-01"
+  test_end: "2026-01-31"
+  validation_split: 0.15
+
+# Feature Settings
+features:
+  # Lookback periods for rolling features
+  lookback_periods: [6, 12, 24, 48, 120]  # 6h, 12h, 1d, 2d, 5d
+
+  # Technical indicators to compute
+  technical:
+    atr_period: 14
+    adx_period: 14
+    rsi_period: 14
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    bb_period: 20
+    bb_std: 2.0
+    ema_fast: 9
+    ema_slow: 21
+    stoch_k: 14
+    stoch_d: 3
+
+# Label Generation
+labels:
+  lookahead_hours: 24        # Predict 24 hours ahead
+  threshold_pips: 30         # Min movement for signal (30 pips = ~0.3%)
+  threshold_pct: 0.003       # Alternative: percentage threshold
+
+# Regime Detection Model (HMM)
+regime_detector:
+  n_states: 3                # bull, bear, choppy
+  covariance_type: "full"
+  n_iter: 100
+  random_state: 42
+
+  # Features for regime detection
+  features:
+    - returns_1d
+    - volatility_20d
+    - adx_14
+
+  # State interpretation
+  state_names:
+    0: "trending_low_vol"    # Good for trend following
+    1: "crisis_high_vol"     # Reduce or skip trading
+    2: "ranging_choppy"      # Mean reversion
+
+# Signal Classifier (XGBoost)
+xgboost:
+  # Model hyperparameters
+  n_estimators: 500
+  max_depth: 6
+  learning_rate: 0.01
+  subsample: 0.8
+  colsample_bytree: 0.8
+  reg_alpha: 0.1
+  reg_lambda: 1.0
+  min_child_weight: 3
+  gamma: 0.1
+
+  # Training settings
+  early_stopping_rounds: 50
+  eval_metric: "mlogloss"
+  random_state: 42
+
+  # Class weights for imbalanced data
+  scale_pos_weight: 1.5
+
+# Random Forest (Ensemble)
+random_forest:
+  n_estimators: 300
+  max_depth: 10
+  min_samples_split: 20
+  min_samples_leaf: 10
+  max_features: "sqrt"
+  random_state: 42
+  n_jobs: -1
+
+# Ensemble Settings
+ensemble:
+  method: "voting"           # voting, stacking, averaging
+  weights:
+    xgboost: 0.6
+    random_forest: 0.4
+
+# Risk Management
+risk:
+  account_risk_pct: 0.02     # 2% per trade
+  max_daily_loss_pct: 0.05   # 5% daily limit
+  kelly_fraction: 0.5        # Half Kelly
+
+  # Regime-based multipliers
+  regime_multipliers:
+    0: 1.0                   # trending_low_vol: full size
+    1: 0.5                   # crisis_high_vol: half size
+    2: 0.7                   # ranging_choppy: reduced
+
+  # SL/TP multipliers (ATR-based)
+  sl_multipliers:
+    0: 1.2
+    1: 2.0
+    2: 1.5
+  tp_multipliers:
+    0: 2.0
+    1: 2.5
+    2: 1.5
+
+  # Position limits
+  max_lot_size: 1.0
+  min_lot_size: 0.01
+  max_positions: 3
+
+# Backtesting
+backtest:
+  initial_balance: 10000
+  commission_pips: 0.5       # Spread + commission
+  slippage_pips: 0.5
+  walk_forward:
+    train_window_months: 24
+    test_window_months: 3
+    retrain_frequency: "quarterly"
+
+# Training
+training:
+  cross_validation:
+    n_splits: 5
+    method: "timeseries"     # timeseries, stratified
+
+  # Feature selection
+  feature_selection:
+    method: "importance"     # importance, rfe, boruta
+    top_n_features: 25
+
+  # Class balancing
+  balance_method: "smote"    # smote, undersample, class_weight
+
+# Inference
+inference:
+  confidence_threshold: 0.6  # Min confidence to trade
+  cache_predictions: true
+  cache_ttl_seconds: 300
+
+# Logging
+logging:
+  level: "INFO"
+  save_predictions: true
+  save_features: false

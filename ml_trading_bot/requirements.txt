@@ -1,0 +1,36 @@
+# ML Trading Bot Requirements
+# ============================
+
+# Core
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+
+# Machine Learning
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+hmmlearn>=0.3.0
+
+# Technical Analysis
+pandas-ta>=0.3.14b
+
+# Model Persistence
+joblib>=1.3.0
+
+# Configuration
+pyyaml>=6.0
+
+# Database (existing in project)
+asyncpg>=0.28.0
+
+# Optional: Deep Learning
+# torch>=2.0.0
+# pytorch-lightning>=2.0.0
+
+# Optional: Visualization
+# matplotlib>=3.7.0
+# plotly>=5.15.0
+# seaborn>=0.12.0
+
+# Optional: Experiment Tracking
+# mlflow>=2.5.0

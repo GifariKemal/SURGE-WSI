@@ -1,0 +1,24 @@
+# Requirements for Data Sync Service
+# MT5 → PostgreSQL → Vector Store (Qdrant)
+
+# Database
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.0
+
+# Vector Database
+qdrant-client>=1.7.0
+
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Caching
+redis>=5.0.0
+
+# HTTP Server (health check)
+fastapi>=0.109.0
+uvicorn>=0.27.0
+
+# Utilities
+python-dateutil>=2.8.2
+schedule>=1.2.0
