@@ -14,21 +14,23 @@ set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 REM Project root is 2 levels up
 for %%I in ("%SCRIPT_DIR%\..\.." ) do set "PROJECT_ROOT=%%~fI"
 
-REM Log file with timestamp
-set "TODAY=%date:~10,4%%date:~4,2%%date:~7,2%"
+REM Log file with timestamp (using wmic for consistent format)
+for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set "DT=%%I"
+set "TODAY=%DT:~0,8%"
 set "LOG_DIR=%SCRIPT_DIR%\logs"
 set "LOG_FILE=%LOG_DIR%\quadlayer_%TODAY%.log"
 
 REM Create logs directory if not exists
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 
+cls
 echo.
 echo ============================================================
 echo SURGE-WSI GBPUSD H1 Quad-Layer Strategy
 echo ============================================================
 echo.
-echo IMPORTANT: Ensure MT5 is running with MetaQuotes-Demo account!
-echo DO NOT use Finex account for this strategy.
+echo [!] IMPORTANT: Ensure MT5 is running with MetaQuotes-Demo!
+echo [!] DO NOT use Finex account for this strategy.
 echo.
 echo Quad-Layer Quality Filter:
 echo   Layer 1: Monthly Profile (tradeable %%)
@@ -63,6 +65,7 @@ if /i "%~1"=="--interval" (
     shift
 )
 if /i "%~1"=="--yes" goto run
+if /i "%~1"=="-y" goto run
 shift
 goto parse
 
@@ -93,8 +96,9 @@ echo.
 REM Change to project root for imports to work
 cd /d "%PROJECT_ROOT%"
 
-REM Run with logging (both console and file)
-python "%SCRIPT_DIR%\main.py" %MODE% --interval %INTERVAL% 2>&1 | powershell -Command "$input | Tee-Object -FilePath '%LOG_FILE%' -Append"
+REM Run with simple logging (append to file)
+echo [%date% %time%] Bot started >> "%LOG_FILE%"
+python "%SCRIPT_DIR%\main.py" %MODE% --interval %INTERVAL% 2>&1
 
 echo.
 echo [%date% %time%] Bot stopped.

@@ -13,13 +13,15 @@ REM Project root is 2 levels up
 for %%I in ("%SCRIPT_DIR%\..\.." ) do set "PROJECT_ROOT=%%~fI"
 
 REM Log file with timestamp
-set "TODAY=%date:~10,4%%date:~4,2%%date:~7,2%"
+for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set "DT=%%I"
+set "TODAY=%DT:~0,8%"
 set "LOG_DIR=%SCRIPT_DIR%\logs"
 set "LOG_FILE=%LOG_DIR%\backtest_%TODAY%.log"
 
 REM Create logs directory if not exists
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 
+cls
 echo.
 echo ============================================================
 echo SURGE-WSI GBPUSD H1 Quad-Layer - BACKTEST
@@ -39,15 +41,15 @@ if exist "%PROJECT_ROOT%\venv\Scripts\activate.bat" (
 REM Change to project root for imports to work
 cd /d "%PROJECT_ROOT%"
 
-REM Run backtest with logging
-python "%SCRIPT_DIR%\backtest.py" 2>&1 | powershell -Command "$input | Tee-Object -FilePath '%LOG_FILE%' -Append"
+REM Run backtest
+echo [%date% %time%] Backtest started >> "%LOG_FILE%"
+python "%SCRIPT_DIR%\backtest.py" 2>&1
 
 echo.
 echo [%date% %time%] Backtest complete.
-echo Log saved to: %LOG_FILE%
 echo.
 echo Reports saved to:
-echo   - strategies\gbpusd_h1_quadlayer\reports\
+echo   - %SCRIPT_DIR%\reports\
 echo   - Telegram (if configured)
 echo.
 pause
