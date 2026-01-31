@@ -70,13 +70,308 @@ from executor import (
 )
 from src.utils.telegram import TelegramNotifier, TelegramFormatter
 import MetaTrader5 as mt5
+import socket
+import subprocess
 
 # ============================================================
-# METAQUOTES ENFORCEMENT - This strategy requires MetaQuotes-Demo
+# CONFIGURATION
 # ============================================================
 REQUIRED_BROKER = "MetaQuotes"  # Must contain this string
 FORBIDDEN_BROKER = "Finex"      # Must NOT contain this string
 METAQUOTES_TERMINAL_PATH = r"C:\Program Files\MetaTrader 5\terminal64.exe"
+
+# Service ports
+POSTGRES_PORT = 5434
+REDIS_PORT = 6381
+
+
+# ============================================================
+# STARTUP CHECKS
+# ============================================================
+class StartupChecker:
+    """Comprehensive startup checks before bot runs"""
+
+    def __init__(self):
+        self.checks = {}
+        self.all_passed = True
+        self.critical_failed = False
+
+    def check_port(self, host: str, port: int, timeout: float = 2.0) -> bool:
+        """Check if a port is open"""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            result = sock.connect_ex((host, port))
+            sock.close()
+            return result == 0
+        except Exception:
+            return False
+
+    def check_docker_running(self) -> bool:
+        """Check if Docker is running"""
+        try:
+            result = subprocess.run(
+                ["docker", "info"],
+                capture_output=True,
+                timeout=10
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def check_docker_containers(self) -> dict:
+        """Check Docker container status"""
+        containers = {}
+        try:
+            result = subprocess.run(
+                ["docker", "ps", "--format", "{{.Names}}\t{{.Status}}"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                for line in result.stdout.strip().split('\n'):
+                    if line:
+                        parts = line.split('\t')
+                        if len(parts) >= 2:
+                            name = parts[0]
+                            status = parts[1]
+                            containers[name] = 'Up' in status
+        except Exception:
+            pass
+        return containers
+
+    def check_postgres(self) -> tuple:
+        """Check PostgreSQL/TimescaleDB connection"""
+        is_open = self.check_port('localhost', POSTGRES_PORT)
+        return is_open, f"localhost:{POSTGRES_PORT}"
+
+    def check_redis(self) -> tuple:
+        """Check Redis connection"""
+        is_open = self.check_port('localhost', REDIS_PORT)
+        return is_open, f"localhost:{REDIS_PORT}"
+
+    def check_mt5_terminal(self) -> tuple:
+        """Check if MT5 terminal is running"""
+        try:
+            if mt5.initialize():
+                terminal_info = mt5.terminal_info()
+                if terminal_info:
+                    return True, terminal_info.name
+                return True, "Connected"
+            return False, "Not running"
+        except Exception as e:
+            return False, str(e)
+
+    def check_mt5_autotrading(self) -> tuple:
+        """Check if AutoTrading is enabled in MT5"""
+        try:
+            terminal_info = mt5.terminal_info()
+            if terminal_info:
+                # trade_allowed indicates if AutoTrading is enabled
+                if terminal_info.trade_allowed:
+                    return True, "Enabled"
+                else:
+                    return False, "DISABLED - Press Ctrl+E in MT5!"
+            return False, "Cannot check"
+        except Exception:
+            return False, "Cannot check"
+
+    def check_mt5_account(self) -> tuple:
+        """Check MT5 account info"""
+        try:
+            account_info = mt5.account_info()
+            if account_info:
+                # Check if it's Finex
+                if FORBIDDEN_BROKER.lower() in account_info.server.lower():
+                    return False, f"WRONG BROKER: {account_info.server}"
+                return True, f"{account_info.login} @ {account_info.server}"
+            return False, "No account"
+        except Exception:
+            return False, "Cannot check"
+
+    def check_telegram_config(self) -> tuple:
+        """Check if Telegram is configured"""
+        token = config.telegram.bot_token
+        chat_id = config.telegram.chat_id
+        if token and chat_id:
+            return True, f"Chat: {chat_id[:10]}..."
+        elif not token:
+            return False, "Missing TELEGRAM_BOT_TOKEN"
+        else:
+            return False, "Missing TELEGRAM_CHAT_ID"
+
+    def run_all_checks(self) -> dict:
+        """Run all startup checks and return results"""
+        print("\n" + "="*60)
+        print("STARTUP CHECKS")
+        print("="*60 + "\n")
+
+        results = {}
+
+        # 1. Docker
+        print("Checking Docker...")
+        docker_ok = self.check_docker_running()
+        results['docker'] = {
+            'name': 'Docker Engine',
+            'status': docker_ok,
+            'detail': 'Running' if docker_ok else 'Not running',
+            'critical': False
+        }
+
+        # 2. PostgreSQL/TimescaleDB
+        print("Checking PostgreSQL...")
+        pg_ok, pg_detail = self.check_postgres()
+        results['postgres'] = {
+            'name': 'PostgreSQL/TimescaleDB',
+            'status': pg_ok,
+            'detail': pg_detail if pg_ok else f"Not responding on port {POSTGRES_PORT}",
+            'critical': True
+        }
+
+        # 3. Redis
+        print("Checking Redis...")
+        redis_ok, redis_detail = self.check_redis()
+        results['redis'] = {
+            'name': 'Redis Cache',
+            'status': redis_ok,
+            'detail': redis_detail if redis_ok else f"Not responding on port {REDIS_PORT}",
+            'critical': False  # Can work without Redis
+        }
+
+        # 4. MT5 Terminal
+        print("Checking MT5 Terminal...")
+        mt5_ok, mt5_detail = self.check_mt5_terminal()
+        results['mt5_terminal'] = {
+            'name': 'MT5 Terminal',
+            'status': mt5_ok,
+            'detail': mt5_detail,
+            'critical': True
+        }
+
+        # 5. MT5 Account (broker check)
+        if mt5_ok:
+            print("Checking MT5 Account...")
+            acc_ok, acc_detail = self.check_mt5_account()
+            results['mt5_account'] = {
+                'name': 'MT5 Account',
+                'status': acc_ok,
+                'detail': acc_detail,
+                'critical': True
+            }
+
+            # 6. AutoTrading
+            print("Checking AutoTrading...")
+            at_ok, at_detail = self.check_mt5_autotrading()
+            results['autotrading'] = {
+                'name': 'MT5 AutoTrading',
+                'status': at_ok,
+                'detail': at_detail,
+                'critical': True
+            }
+
+        # 7. Telegram
+        print("Checking Telegram...")
+        tg_ok, tg_detail = self.check_telegram_config()
+        results['telegram'] = {
+            'name': 'Telegram Bot',
+            'status': tg_ok,
+            'detail': tg_detail,
+            'critical': False
+        }
+
+        # Print results table
+        print("\n" + "-"*60)
+        print(f"{'Service':<25} {'Status':<10} {'Details'}")
+        print("-"*60)
+
+        all_ok = True
+        critical_fail = False
+
+        for key, check in results.items():
+            status_icon = "[OK]" if check['status'] else "[FAIL]"
+            status_color = "" if check['status'] else "(!)"
+
+            print(f"{check['name']:<25} {status_icon:<10} {check['detail']}")
+
+            if not check['status']:
+                all_ok = False
+                if check['critical']:
+                    critical_fail = True
+
+        print("-"*60)
+
+        # Summary
+        if all_ok:
+            print("\n[OK] All checks passed!")
+        elif critical_fail:
+            print("\n[!] CRITICAL checks failed - cannot start bot")
+        else:
+            print("\n[?] Some non-critical checks failed - bot may work with reduced functionality")
+
+        print("="*60 + "\n")
+
+        self.checks = results
+        self.all_passed = all_ok
+        self.critical_failed = critical_fail
+
+        return results
+
+    def get_failed_critical(self) -> list:
+        """Get list of failed critical checks"""
+        failed = []
+        for key, check in self.checks.items():
+            if check['critical'] and not check['status']:
+                failed.append(check)
+        return failed
+
+    def print_fix_instructions(self):
+        """Print instructions to fix failed checks"""
+        failed = self.get_failed_critical()
+        if not failed:
+            return
+
+        print("\n" + "="*60)
+        print("HOW TO FIX")
+        print("="*60 + "\n")
+
+        for check in failed:
+            name = check['name']
+
+            if 'PostgreSQL' in name:
+                print(f"[{name}]")
+                print("  Run: docker-compose up -d")
+                print("  Or:  docker start surge-timescaledb")
+                print()
+
+            elif 'Redis' in name:
+                print(f"[{name}]")
+                print("  Run: docker-compose up -d")
+                print("  Or:  docker start surge-redis")
+                print()
+
+            elif 'MT5 Terminal' in name:
+                print(f"[{name}]")
+                print("  1. Open MetaTrader 5 (NOT Finex!)")
+                print("  2. Login to MetaQuotes-Demo account")
+                print()
+
+            elif 'MT5 Account' in name:
+                print(f"[{name}]")
+                print("  1. Close Finex MT5 terminal")
+                print("  2. Open MetaQuotes MT5 terminal")
+                print("  3. Login to MetaQuotes-Demo account")
+                print(f"  Path: {METAQUOTES_TERMINAL_PATH}")
+                print()
+
+            elif 'AutoTrading' in name:
+                print(f"[{name}]")
+                print("  1. In MT5, press Ctrl+E to enable AutoTrading")
+                print("  2. Or click the 'AutoTrading' button in toolbar")
+                print("  3. Make sure the button shows GREEN, not RED")
+                print()
+
+        print("="*60 + "\n")
 
 
 def ensure_metaquotes_connection() -> bool:
@@ -233,6 +528,23 @@ class TradingBot:
 
     async def initialize(self):
         """Initialize all components"""
+
+        # ============================================================
+        # STARTUP CHECKS - Run before anything else
+        # ============================================================
+        checker = StartupChecker()
+        checker.run_all_checks()
+
+        if checker.critical_failed:
+            checker.print_fix_instructions()
+            raise RuntimeError(
+                "\n[!] Critical startup checks failed. Please fix the issues above and try again."
+            )
+
+        # Warn about non-critical issues
+        if not checker.all_passed:
+            logger.warning("Some non-critical checks failed - continuing with reduced functionality")
+
         logger.info(f"Initializing H1 v6.4 GBPUSD Trading Bot (QUAD-LAYER)")
         logger.info(f"Mode: {self.mode.upper()}")
         logger.info(f"Interval: {self.interval}s")
@@ -253,7 +565,7 @@ class TradingBot:
         # METAQUOTES ENFORCEMENT
         # This strategy REQUIRES MetaQuotes-Demo, NOT Finex
         # ============================================================
-        logger.info("Checking MT5 connection (MetaQuotes required)...")
+        logger.info("Verifying MetaQuotes connection...")
 
         if not ensure_metaquotes_connection():
             raise RuntimeError(
@@ -281,11 +593,16 @@ class TradingBot:
 
         self.mt5 = mt5_connector
 
-        # Check AutoTrading status
+        # Final AutoTrading check with clear warning
         if mt5_connector.is_autotrading_enabled():
             logger.info("AutoTrading: ENABLED")
         else:
-            logger.warning("AutoTrading: DISABLED - Enable in MT5 terminal!")
+            logger.error("="*60)
+            logger.error("[!] AUTOTRADING IS DISABLED!")
+            logger.error("[!] Bot will NOT be able to execute trades!")
+            logger.error("[!] Press Ctrl+E in MT5 to enable AutoTrading")
+            logger.error("="*60)
+            # Don't raise error, just warn - user might want to monitor only
 
         # Wrap with adapter for executor compatibility
         broker = BrokerAdapter(mt5_connector)
