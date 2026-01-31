@@ -1,6 +1,7 @@
 """
 MT5 Backtest Runner for GBPUSD H1 QuadLayer v6.9
-FULL VERSION with Layer 3 & Layer 4 filters
+FULL VERSION - Matching PostgreSQL backtest exactly
+Includes: SL_CAPPED, Multiple Entry Types, Layer 3 & 4 Filters
 """
 
 import MetaTrader5 as mt5
@@ -10,20 +11,42 @@ from datetime import datetime, timedelta
 import os
 import json
 
-# Initialize MT5
+# Initialize MT5 - uses currently running terminal
 print("Initializing MT5...")
 if not mt5.initialize():
     print(f"MT5 initialization failed: {mt5.last_error()}")
     quit()
 
 print(f"MT5 Version: {mt5.version()}")
+account = mt5.account_info()
+if account:
+    print(f"Connected to: {account.server}")
+    print(f"Account: {account.login}")
+else:
+    print("Warning: No account connected")
+    quit()
+
+# ============================================================
+# BROKER TIMEZONE CONFIGURATION
+# ============================================================
+# MetaQuotes-Demo uses EET timezone (GMT+2, or GMT+3 during DST)
+GMT_OFFSET = 2
+
+def server_to_utc_hour(server_hour):
+    """Convert broker server hour to UTC hour"""
+    utc_hour = server_hour - GMT_OFFSET
+    if utc_hour < 0:
+        utc_hour += 24
+    if utc_hour >= 24:
+        utc_hour -= 24
+    return utc_hour
 
 # ============================================================
 # CONFIGURATION - MATCHING PYTHON BACKTEST EXACTLY
 # ============================================================
 SYMBOL = "GBPUSD"
 TIMEFRAME = mt5.TIMEFRAME_H1
-START_DATE = datetime(2025, 1, 1)  # Match Python backtest period
+START_DATE = datetime(2025, 1, 1)
 END_DATE = datetime(2026, 1, 30)
 INITIAL_BALANCE = 50000
 RISK_PERCENT = 1.0
@@ -32,16 +55,29 @@ TP_RATIO = 1.5
 MIN_ATR = 8.0
 MAX_ATR = 25.0
 PIP_SIZE = 0.0001
+PIP_VALUE = 10.0  # $10 per pip per lot
+
+# NEW: Max loss per trade cap (matching PostgreSQL exactly!)
+MAX_LOSS_PER_TRADE_PCT = 0.15  # Max 0.15% loss per trade = $75 on $50K
 
 # Day Multipliers (v6.9)
 DAY_MULTIPLIERS = {0: 1.0, 1: 0.9, 2: 1.0, 3: 0.8, 4: 0.3, 5: 0.0, 6: 0.0}
 
-# Hour Multipliers
+# Hour Multipliers (UTC)
 HOUR_MULTIPLIERS = {
     0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0,
     6: 0.5, 7: 0.0, 8: 1.0, 9: 1.0, 10: 0.9, 11: 0.0,
     12: 0.7, 13: 1.0, 14: 1.0, 15: 1.0, 16: 0.9, 17: 0.7,
     18: 0.3, 19: 0.0, 20: 0.0, 21: 0.0, 22: 0.0, 23: 0.0,
+}
+
+# Entry Type Multipliers
+ENTRY_MULTIPLIERS = {'MOMENTUM': 1.0, 'LOWER_HIGH': 1.0, 'ENGULF': 0.8}
+
+# Monthly Risk Multipliers
+MONTHLY_RISK = {
+    1: 0.9, 2: 0.6, 3: 0.8, 4: 1.0, 5: 0.7, 6: 0.85,
+    7: 1.0, 8: 0.75, 9: 0.9, 10: 0.6, 11: 0.75, 12: 0.8,
 }
 
 # Layer 3: Intra-Month Risk Manager Config
@@ -61,7 +97,7 @@ CAUTION_SIZE_MULT = 0.6
 BOTH_DIRECTIONS_FAIL_THRESHOLD = 4
 RECOVERY_SIZE_MULT = 0.5
 
-# Session Filter
+# Session Filter (UTC hours)
 SKIP_HOURS = [11]
 SKIP_ORDER_BLOCK_HOURS = [8, 16]
 SKIP_EMA_PULLBACK_HOURS = [13, 14]
@@ -111,7 +147,6 @@ class IntraMonthRiskManager:
         month_key = (dt.year, dt.month)
         day_key = dt.date()
 
-        # Reset for new month
         if self.current_month != month_key:
             self.current_month = month_key
             self.monthly_pnl = 0.0
@@ -119,7 +154,6 @@ class IntraMonthRiskManager:
             self.month_stopped = False
             self.day_stopped = False
 
-        # Reset for new day
         if self.current_day != day_key:
             self.current_day = day_key
             self.daily_losses = 0
@@ -130,12 +164,10 @@ class IntraMonthRiskManager:
         if self.day_stopped:
             return False, 0, "DAY_STOPPED"
 
-        # Monthly loss circuit breaker
         if self.monthly_pnl <= MONTHLY_LOSS_STOP:
             self.month_stopped = True
             return False, 0, "MONTH_CIRCUIT_BREAKER"
 
-        # Dynamic adjustment
         dynamic_adj = 0
         if self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_3:
             dynamic_adj = 15
@@ -144,7 +176,6 @@ class IntraMonthRiskManager:
         elif self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_1:
             dynamic_adj = 5
 
-        # Consecutive losses
         if self.consecutive_losses >= CONSECUTIVE_LOSS_MAX:
             self.day_stopped = True
             return False, 0, "CONSECUTIVE_LOSS_STOP"
@@ -194,7 +225,6 @@ class PatternBasedFilter:
         buy_wr = sum(1 for _, p in buy_trades if p > 0) / len(buy_trades) if buy_trades else 1.0
         sell_wr = sum(1 for _, p in sell_trades if p > 0) / len(sell_trades) if sell_trades else 1.0
 
-        # Check if BOTH directions are failing
         both_fail = False
         recent_window = self.trade_history[-BOTH_DIRECTIONS_FAIL_THRESHOLD*2:]
         if len(recent_window) >= BOTH_DIRECTIONS_FAIL_THRESHOLD * 2:
@@ -206,7 +236,6 @@ class PatternBasedFilter:
         return {'rolling_wr': rolling_wr, 'buy_wr': buy_wr, 'sell_wr': sell_wr, 'both_fail': both_fail}
 
     def check_trade(self, direction):
-        # During warmup, always allow
         if len(self.trade_history) < WARMUP_TRADES:
             return True, 0, 1.0, "WARMUP"
 
@@ -293,13 +322,55 @@ def calculate_adx(df, period=14):
     return dx.rolling(period).mean()
 
 # ============================================================
+# ENTRY TYPE DETECTION (NEW!)
+# ============================================================
+def check_entry_trigger(bar, prev_bar, direction):
+    """
+    Detect entry type: MOMENTUM, ENGULF, or LOWER_HIGH
+    Matches PostgreSQL backtest logic exactly
+    """
+    total_range = bar['high'] - bar['low']
+    if total_range < 0.0003:
+        return False, ""
+
+    body = abs(bar['close'] - bar['open'])
+    is_bullish = bar['close'] > bar['open']
+    is_bearish = bar['close'] < bar['open']
+    prev_body = abs(prev_bar['close'] - prev_bar['open'])
+
+    # MOMENTUM: Strong body > 50% of range
+    if body > total_range * 0.5:
+        if direction == 'BUY' and is_bullish:
+            return True, 'MOMENTUM'
+        if direction == 'SELL' and is_bearish:
+            return True, 'MOMENTUM'
+
+    # ENGULF: Current body > 120% of previous body, opposite color
+    if body > prev_body * 1.2:
+        if direction == 'BUY' and is_bullish and prev_bar['close'] < prev_bar['open']:
+            return True, 'ENGULF'
+        if direction == 'SELL' and is_bearish and prev_bar['close'] > prev_bar['open']:
+            return True, 'ENGULF'
+
+    # LOWER_HIGH: For SELL only
+    if direction == 'SELL':
+        if bar['high'] < prev_bar['high'] and is_bearish:
+            return True, 'LOWER_HIGH'
+
+    return False, ""
+
+# ============================================================
 # MAIN BACKTEST
 # ============================================================
 print(f"\n{'='*60}")
 print("GBPUSD H1 QuadLayer v6.9 FULL Backtest")
+print("(Matching PostgreSQL with SL_CAPPED & Entry Types)")
 print(f"{'='*60}")
 print(f"Period: {START_DATE.date()} to {END_DATE.date()}")
 print(f"Initial Balance: ${INITIAL_BALANCE:,}")
+print(f"Broker GMT Offset: GMT+{GMT_OFFSET}")
+print(f"  Server 10:00 = UTC {server_to_utc_hour(10):02d}:00")
+print(f"  Server 15:00 = UTC {server_to_utc_hour(15):02d}:00")
 
 # Get historical data
 rates = mt5.copy_rates_range(SYMBOL, TIMEFRAME, START_DATE, END_DATE)
@@ -330,35 +401,58 @@ trades = []
 balance = INITIAL_BALANCE
 position = None
 monthly_pnl = {}
-skip_stats = {'LAYER3': 0, 'LAYER4': 0, 'SESSION': 0, 'ATR': 0, 'REGIME': 0}
+skip_stats = {'LAYER3': 0, 'LAYER4': 0, 'SESSION': 0, 'ATR': 0, 'REGIME': 0, 'NO_TRIGGER': 0}
+entry_stats = {'ORDER_BLOCK': {'count': 0, 'pnl': 0}, 'EMA_PULLBACK': {'count': 0, 'pnl': 0}}
+entry_type_stats = {'MOMENTUM': {'count': 0, 'pnl': 0}, 'ENGULF': {'count': 0, 'pnl': 0}, 'LOWER_HIGH': {'count': 0, 'pnl': 0}}
 
-print("Running backtest with FULL Quad-Layer filter...")
+print("Running backtest with FULL Quad-Layer filter + SL_CAPPED...")
 
-for i in range(50, len(df)):
+for i in range(100, len(df)):
     bar = df.iloc[i]
     prev_bar = df.iloc[i-1]
     current_time = bar['time'].to_pydatetime()
 
     # Check existing position
     if position:
+        pnl = 0
+        exit_reason = ""
+        exit_price = None
+
         if position['direction'] == 'BUY':
             if bar['low'] <= position['sl']:
-                pnl = -position['risk_amount']
+                exit_price = position['sl']
                 exit_reason = 'SL'
             elif bar['high'] >= position['tp']:
-                pnl = position['risk_amount'] * TP_RATIO
+                exit_price = position['tp']
                 exit_reason = 'TP'
             else:
                 continue
         else:
             if bar['high'] >= position['sl']:
-                pnl = -position['risk_amount']
+                exit_price = position['sl']
                 exit_reason = 'SL'
             elif bar['low'] <= position['tp']:
-                pnl = position['risk_amount'] * TP_RATIO
+                exit_price = position['tp']
                 exit_reason = 'TP'
             else:
                 continue
+
+        # Calculate actual PnL based on pip movement and lot size
+        if position['direction'] == 'BUY':
+            pips = (exit_price - position['entry_price']) / PIP_SIZE
+        else:
+            pips = (position['entry_price'] - exit_price) / PIP_SIZE
+
+        # Calculate lot size from risk amount
+        sl_pips = abs(position['entry_price'] - position['sl']) / PIP_SIZE
+        lot_size = position['risk_amount'] / (sl_pips * PIP_VALUE) if sl_pips > 0 else 0.01
+        pnl = pips * lot_size * PIP_VALUE
+
+        # *** KEY FIX: Apply SL_CAPPED - max 1% loss per trade ***
+        max_loss = balance * (MAX_LOSS_PER_TRADE_PCT / 100)
+        if pnl < 0 and abs(pnl) > max_loss:
+            pnl = -max_loss
+            exit_reason = 'SL_CAPPED'
 
         balance += pnl
         position['pnl'] = pnl
@@ -367,6 +461,13 @@ for i in range(50, len(df)):
         # Record to managers
         risk_manager.record_trade(pnl)
         pattern_filter.record_trade(position['direction'], pnl)
+
+        # Track stats
+        entry_stats[position['signal_type']]['count'] += 1
+        entry_stats[position['signal_type']]['pnl'] += pnl
+        if position['entry_type'] in entry_type_stats:
+            entry_type_stats[position['entry_type']]['count'] += 1
+            entry_type_stats[position['entry_type']]['pnl'] += pnl
 
         trades.append(position.copy())
         month_key = current_time.strftime('%Y-%m')
@@ -380,17 +481,19 @@ for i in range(50, len(df)):
         current_month_key = month_key
         pattern_filter.reset_for_month(current_time.month)
 
-    # Time filters
+    # Time filters - CONVERT TO UTC!
     day = current_time.weekday()
-    hour = current_time.hour
+    server_hour = current_time.hour
+    utc_hour = server_to_utc_hour(server_hour)
 
     day_mult = DAY_MULTIPLIERS.get(day, 0)
-    hour_mult = HOUR_MULTIPLIERS.get(hour, 0)
+    hour_mult = HOUR_MULTIPLIERS.get(utc_hour, 0)
     if day_mult <= 0 or hour_mult <= 0:
         continue
 
-    in_london = 8 <= hour <= 10
-    in_ny = 13 <= hour <= 17
+    # Session check using UTC hours
+    in_london = 8 <= utc_hour <= 10
+    in_ny = 13 <= utc_hour <= 17
     if not (in_london or in_ny):
         continue
 
@@ -406,7 +509,7 @@ for i in range(50, len(df)):
         skip_stats['ATR'] += 1
         continue
 
-    # Regime
+    # Regime detection
     close = bar['close']
     ema20 = bar['ema20']
     ema50 = bar['ema50']
@@ -432,35 +535,50 @@ for i in range(50, len(df)):
     curr_bullish = bar['close'] > bar['open']
     curr_bearish = bar['close'] < bar['open']
 
-    # Order Block
+    # Order Block detection - use UTC hour for session filter
     if prev_bearish and curr_bullish and body_ratio > 0.55 and bar['close'] > prev_bar['high']:
-        if is_bullish and hour not in SKIP_ORDER_BLOCK_HOURS:
+        if is_bullish and utc_hour not in SKIP_ORDER_BLOCK_HOURS:
             signal = 'BUY'
             signal_type = 'ORDER_BLOCK'
             quality = body_ratio * 100
     elif prev_bullish and curr_bearish and body_ratio > 0.55 and bar['close'] < prev_bar['low']:
-        if is_bearish and hour not in SKIP_ORDER_BLOCK_HOURS:
+        if is_bearish and utc_hour not in SKIP_ORDER_BLOCK_HOURS:
             signal = 'SELL'
             signal_type = 'ORDER_BLOCK'
             quality = body_ratio * 100
 
-    # EMA Pullback
+    # EMA Pullback detection - use UTC hour for session filter
     if not signal and body_ratio > 0.4 and bar['adx'] > 20 and 30 <= bar['rsi'] <= 70:
         atr_distance = atr_pips * PIP_SIZE * 1.5
-        if curr_bullish and is_bullish and hour not in SKIP_EMA_PULLBACK_HOURS:
+        if curr_bullish and is_bullish and utc_hour not in SKIP_EMA_PULLBACK_HOURS:
             dist = bar['low'] - ema20
             if dist <= atr_distance:
                 signal = 'BUY'
                 signal_type = 'EMA_PULLBACK'
-                quality = min(100, max(55, 60 + (bar['adx'] - 20) * 0.5))
-        elif curr_bearish and is_bearish and hour not in SKIP_EMA_PULLBACK_HOURS:
+                # Improved quality calculation (matching PostgreSQL)
+                touch_quality = max(0, 30 - (dist / PIP_SIZE))
+                adx_quality = min(25, (bar['adx'] - 15) * 1.5)
+                rsi_quality = 25 if abs(50 - bar['rsi']) < 20 else 15
+                body_quality = min(20, body_ratio * 30)
+                quality = min(100, max(55, touch_quality + adx_quality + rsi_quality + body_quality))
+        elif curr_bearish and is_bearish and utc_hour not in SKIP_EMA_PULLBACK_HOURS:
             dist = ema20 - bar['high']
             if dist <= atr_distance:
                 signal = 'SELL'
                 signal_type = 'EMA_PULLBACK'
-                quality = min(100, max(55, 60 + (bar['adx'] - 20) * 0.5))
+                touch_quality = max(0, 30 - (dist / PIP_SIZE))
+                adx_quality = min(25, (bar['adx'] - 15) * 1.5)
+                rsi_quality = 25 if abs(50 - bar['rsi']) < 20 else 15
+                body_quality = min(20, body_ratio * 30)
+                quality = min(100, max(55, touch_quality + adx_quality + rsi_quality + body_quality))
 
     if not signal or quality < dynamic_quality:
+        continue
+
+    # *** NEW: Check entry trigger for entry type ***
+    triggered, entry_type = check_entry_trigger(bar, prev_bar, signal)
+    if not triggered:
+        skip_stats['NO_TRIGGER'] += 1
         continue
 
     # LAYER 4: Pattern filter
@@ -473,8 +591,17 @@ for i in range(50, len(df)):
     if quality < effective_quality:
         continue
 
-    # Execute
-    risk_mult = day_mult * hour_mult * (quality / 100) * pattern_size_mult
+    # Calculate risk multiplier (matching PostgreSQL)
+    entry_mult = ENTRY_MULTIPLIERS.get(entry_type, 0.8)
+    month_mult = MONTHLY_RISK.get(current_time.month, 0.8)
+    risk_mult = day_mult * hour_mult * entry_mult * (quality / 100) * month_mult * pattern_size_mult
+
+    if risk_mult < 0.30:
+        continue
+
+    risk_mult = max(0.30, min(1.2, risk_mult))
+
+    # Execute trade
     risk_amount = balance * (RISK_PERCENT / 100) * risk_mult
     sl_pips = atr_pips * SL_ATR_MULT
     tp_pips = sl_pips * TP_RATIO
@@ -487,6 +614,7 @@ for i in range(50, len(df)):
         sl = entry_price + sl_pips * PIP_SIZE
         tp = entry_price - tp_pips * PIP_SIZE
 
+    session = "london" if in_london else "newyork"
     position = {
         'direction': signal,
         'entry_time': current_time,
@@ -495,12 +623,15 @@ for i in range(50, len(df)):
         'tp': tp,
         'risk_amount': risk_amount,
         'signal_type': signal_type,
-        'quality': quality
+        'entry_type': entry_type,
+        'quality': quality,
+        'utc_hour': utc_hour,
+        'session': session
     }
 
 # Results
 print(f"\n{'='*60}")
-print("BACKTEST RESULTS (FULL QUAD-LAYER)")
+print("BACKTEST RESULTS (FULL QUAD-LAYER + SL_CAPPED)")
 print(f"{'='*60}")
 
 total_trades = len(trades)
@@ -514,6 +645,9 @@ if total_trades > 0:
     net_pnl = total_profit - total_loss
     profit_factor = total_profit / total_loss if total_loss > 0 else float('inf')
 
+    avg_win = total_profit / wins if wins > 0 else 0
+    avg_loss = total_loss / losses if losses > 0 else 0
+
     losing_months = sum(1 for m, pnl in monthly_pnl.items() if pnl < 0)
     total_months = len(monthly_pnl)
 
@@ -523,7 +657,26 @@ if total_trades > 0:
     print(f"Net P/L:         ${net_pnl:+,.2f}")
     print(f"Total Return:    {(net_pnl/INITIAL_BALANCE)*100:+.1f}%")
     print(f"Final Balance:   ${balance:,.2f}")
+    print(f"Avg Win:         ${avg_win:.2f}")
+    print(f"Avg Loss:        ${avg_loss:.2f}")
+    print(f"R:R Ratio:       1:{avg_win/avg_loss:.2f}" if avg_loss > 0 else "R:R Ratio: N/A")
     print(f"Losing Months:   {losing_months}/{total_months}")
+
+    print(f"\n{'='*60}")
+    print("ENTRY SIGNALS")
+    print(f"{'='*60}")
+    for sig, data in entry_stats.items():
+        if data['count'] > 0:
+            wr = sum(1 for t in trades if t['signal_type'] == sig and t['pnl'] > 0) / data['count'] * 100
+            print(f"  {sig}: {data['count']} trades, {wr:.1f}% WR, ${data['pnl']:+,.0f}")
+
+    print(f"\n{'='*60}")
+    print("ENTRY TYPES")
+    print(f"{'='*60}")
+    for et, data in entry_type_stats.items():
+        if data['count'] > 0:
+            wr = sum(1 for t in trades if t.get('entry_type') == et and t['pnl'] > 0) / data['count'] * 100
+            print(f"  {et}: {data['count']} trades, {wr:.1f}% WR, ${data['pnl']:+,.0f}")
 
     print(f"\n{'='*60}")
     print("SKIP STATISTICS")
@@ -545,12 +698,14 @@ if total_trades > 0:
     print(f"\nTrades exported to: {output_path}")
 
     summary = {
-        'strategy': 'GBPUSD H1 QuadLayer v6.9 (Full)',
+        'strategy': 'GBPUSD H1 QuadLayer v6.9 (Full + SL_CAPPED)',
         'period': f"{START_DATE.date()} to {END_DATE.date()}",
         'total_trades': total_trades,
         'win_rate': round(win_rate, 1),
         'profit_factor': round(profit_factor, 2),
         'net_pnl': round(net_pnl, 2),
+        'avg_win': round(avg_win, 2),
+        'avg_loss': round(avg_loss, 2),
         'losing_months': losing_months,
         'total_months': total_months,
         'monthly_pnl': {k: round(v, 2) for k, v in monthly_pnl.items()}
