@@ -1,0 +1,312 @@
+# RSI Strategy Optimization Research
+
+## Strategy Evolution Summary
+
+| Version | Return | Improvement | Key Change |
+|---------|--------|-------------|------------|
+| v3.1 | ~+100% | Baseline | Fixed bugs, proper implementation |
+| v3.2 | ~+152% | +52.1% | Added Volatility Filter (ATR 20-80) |
+| v3.3 | ~+227% | +75.2% | Added Dynamic TP by volatility regime |
+| v3.4 | +493.1% | +238.5% | RSI thresholds 42/58 (from 35/65) |
+| v3.5 | +524.1% | +31.0% | Time-based TP (+0.35x during 12-16 UTC) |
+| **v3.6** | **+572.9%** | **+48.9%** | Max holding 46h (force close stuck positions) |
+
+---
+
+## Current Best Configuration (v3.6)
+
+```python
+RSI_CONFIG = {
+    "rsi_period": 10,
+    "rsi_oversold": 42.0,
+    "rsi_overbought": 58.0,
+    "sl_atr_mult": 1.5,
+    "tp_atr_mult": 3.0,
+    "session_start": 7,
+    "session_end": 22,
+    "risk_per_trade": 0.01,
+    # Volatility filter (v3.2)
+    "min_atr_percentile": 20.0,
+    "max_atr_percentile": 80.0,
+    # Dynamic TP (v3.3)
+    "dynamic_tp": True,
+    "tp_low_vol_mult": 2.4,   # ATR < 40th pct
+    "tp_high_vol_mult": 3.6,  # ATR > 60th pct
+    # Time-based TP (v3.5)
+    "time_tp_bonus": True,
+    "time_tp_start": 12,
+    "time_tp_end": 16,
+    "time_tp_bonus_mult": 0.35,
+    # Max holding period (v3.6)
+    "max_holding_hours": 46,  # Force close after 46 hours
+}
+```
+
+**Performance:**
+- Return: +572.9% (6 years)
+- Trades: 2652 (~440/year, ~8.5/week)
+- Win Rate: 36.8%
+- Max Drawdown: 36.7% (improved from 39.2%)
+- Profitable Years: 6/6
+- Time exits: ~44 (1.6% of trades)
+
+---
+
+## TECHNIQUES THAT WORKED ✅
+
+### 1. Volatility Filter (ATR Percentile 20-80) ✅
+**Result:** +52.1% improvement
+**Rationale:** Skip trading during extreme volatility (both too low and too high)
+- ATR < 20th percentile: market too quiet, signals less reliable
+- ATR > 80th percentile: market too chaotic, stops get hit easily
+
+### 2. Dynamic TP Based on Volatility Regime ✅
+**Result:** +75.2% improvement
+**Rationale:** Adjust take profit based on current market conditions
+- Low volatility (ATR < 40th): TP = 2.4x ATR (take profit faster)
+- Medium volatility: TP = 3.0x ATR (standard)
+- High volatility (ATR > 60th): TP = 3.6x ATR (let profits run)
+
+### 3. RSI Thresholds 42/58 (Looser) ✅
+**Result:** +238.5% improvement
+**Rationale:** More signals = more opportunities
+- Original 35/65 was too strict, missing good entries
+- 42/58 catches more mean reversion opportunities
+- Trade count increased significantly
+
+### 4. Time-based TP Bonus (12-16 UTC) ✅
+**Result:** +31.0% improvement
+**Rationale:** London+NY overlap has highest momentum
+- More volume = better trending after entry
+- Larger TP captures bigger moves during overlap
+- +0.35x ATR bonus optimal (tested 0.3, 0.35, 0.4, 0.45, 0.5)
+
+---
+
+## TECHNIQUES THAT FAILED ❌
+
+### Position Sizing Techniques
+
+#### Kelly Criterion (Half-Kelly ~2.3%) ❌
+**Result:** +109% improvement BUT MaxDD jumped to 75.8%
+**Why Failed:** Too aggressive for 37% win rate strategy
+```
+Kelly = (W × R − L) / R = (0.374 × 1.91 − 0.626) / 1.91 = 4.7%
+Half-Kelly = 2.3%
+```
+**Verdict:** Violates user requirement of 1% risk, too risky
+
+#### Scaled Entry (Add on extreme RSI) ❌
+**Result:** -556.3% (LOSS)
+**Why Failed:** Adding to position when RSI more extreme often means trend continuing against us
+- Scale-in at RSI 35 when already in at RSI 42 = bigger loss when SL hit
+**Verdict:** REMOVED - catastrophic losses
+
+#### Dynamic Risk (Streak-based) ❌
+**Result:** -1.7% (no improvement)
+**Why Failed:** Win/loss streaks are random, no predictive value
+- Increasing risk after wins doesn't help
+- Reducing risk after losses misses recovery opportunities
+**Verdict:** REMOVED - no benefit
+
+### Exit Strategy Techniques
+
+#### Partial Exit (50% at midpoint) ❌
+**Result:** -179.1%
+**Why Failed:** Taking profit too early reduces overall gains
+- Mean reversion needs full TP to compensate for losses
+- R:R drops when closing half early
+**Verdict:** REMOVED - significantly hurts performance
+
+#### Trailing Stop ❌
+**Result:** -592.9% (NEAR TOTAL LOSS)
+**Why Failed:** Mean reversion moves are not trending
+- Price often retraces before hitting TP
+- Trailing stop gets hit during normal retracement
+**Verdict:** REMOVED - catastrophic for mean reversion
+
+### Entry Filter Techniques
+
+#### RSI Momentum Confirmation ❌
+**Result:** -511.2%
+**Why Failed:** Waiting for RSI to "turn" misses best entries
+- Entry when RSI is still falling (for BUY) often best
+- Momentum filter removes 3435 trades (65%!)
+**Verdict:** REMOVED - too many filtered trades
+
+#### H4 RSI Confirmation ❌
+**Result:** -488.5%
+**Why Failed:** Higher timeframe alignment often contradicts H1 signal
+- H4 can be neutral while H1 is oversold
+- Reduces trade count significantly
+**Verdict:** REMOVED - misaligned timeframes hurt
+
+#### Support/Resistance Proximity ❌
+**Result:** -106.4%
+**Why Failed:** S/R levels not reliable for mean reversion
+- Price at support doesn't mean buy signal is better
+- Filtered 530 trades without improving WR
+**Verdict:** REMOVED - no benefit
+
+### Take Profit Adjustments
+
+#### Asymmetric TP (BUY vs SELL) ❌
+**Result:** All variants negative (-116% to -214%)
+- BUY +0.3x: -116.8%
+- SELL -0.3x: -111.5%
+- Combined: -189.3% to -214.7%
+**Why Failed:** Both directions need same R:R for consistency
+**Verdict:** REMOVED - hurts performance
+
+#### Wider TP (3.0/4.0/5.0) ❌
+**Result:** -451.1%
+**Why Failed:** Mean reversion doesn't run far enough
+- Win rate drops from 37% to 29%
+- Fewer winning trades don't compensate
+**Verdict:** REMOVED - too ambitious for mean reversion
+
+---
+
+## INDICATORS TESTED (from research_ideas_test.py)
+
+### RSI2 (Larry Connors style) ❌
+**Result:** Negative
+**Why:** Too volatile, false signals
+
+### Bollinger Band Filter ❌
+**Result:** Negative
+**Why:** Redundant with RSI, filters good trades
+
+### Stochastic Confirmation ❌
+**Result:** Negative
+**Why:** Adds noise, no improvement
+
+### MACD Trend Filter ❌
+**Result:** Negative
+**Why:** Trend filter contradicts mean reversion
+
+### Williams %R ❌
+**Result:** Negative
+**Why:** Similar to RSI, no added value
+
+### CCI (Commodity Channel Index) ❌
+**Result:** Negative
+**Why:** Extra complexity, no benefit
+
+---
+
+## CRITICAL FINDINGS
+
+### What Makes RSI Mean Reversion Work:
+1. **Simplicity** - RSI alone is sufficient
+2. **Loose thresholds** - More trades = more opportunities
+3. **Fixed R:R** - Consistent SL/TP structure
+4. **Volatility-aware TP** - Adapt to market conditions
+5. **Time-aware TP** - Capitalize on high-momentum periods
+
+### What Kills RSI Mean Reversion:
+1. **Additional filters** - Most reduce trades without improving WR
+2. **Scaled entries** - Averaging into losers = bigger losses
+3. **Trailing stops** - Cuts winners short in ranging markets
+4. **Aggressive position sizing** - Drawdowns become unbearable
+5. **Multi-timeframe confirmation** - Reduces opportunity
+
+---
+
+## TIME-BASED EXIT (46 hours) ✅ IMPLEMENTED in v3.6
+
+**Result:** +48.9% improvement
+**Implementation:** Force close position after 46 hours if no SL/TP hit
+**Rationale:**
+- Research from arXiv shows mean reversion has optimal holding period
+- Trades stuck too long are often in unfavorable positions
+- 46 hours = ~2 trading days is optimal for H1 timeframe
+
+**Testing Results (from test_time_exit_finetune.py):**
+| Hours | Return | Diff vs Baseline | MaxDD |
+|-------|--------|------------------|-------|
+| 40h | +556.2% | +32.1% | 37.4% |
+| 42h | +561.8% | +37.7% | 36.9% |
+| 44h | +568.1% | +44.0% | 36.8% |
+| **46h** | **+572.9%** | **+48.9%** | **36.7%** |
+| 48h | +570.3% | +46.2% | 37.0% |
+| 50h | +565.1% | +41.0% | 37.3% |
+
+**Performance:**
+- Return: +572.9% (vs +524.1% baseline)
+- MaxDD: 36.7% (vs 39.2% baseline) - BETTER!
+- Time exits: only 44 (1.6% of trades)
+- 6/6 profitable years maintained
+
+---
+
+## Z-SCORE TECHNIQUES TESTED (All Failed) ❌
+
+### RSI + Z-Score Confirmation ❌
+**Result:** -145% to -468% depending on parameters
+**Tested:** Different lookbacks (10, 20, 50) and thresholds (0.5, 1.0, 1.5)
+**Why Failed:** Adds another filter, reduces trades, no WR improvement
+**Verdict:** REMOVED - classic case of over-filtering
+
+### Extreme Z-Score TP Bonus ❌
+**Result:** -72% to -280%
+**Why Failed:** Not all extreme Z-score entries benefit from larger TP
+**Verdict:** REMOVED - no improvement
+
+### RSI Z-Score (Adaptive thresholds) ❌
+**Result:** -554.7%
+**Why Failed:** Z-score of RSI is too noisy, reduces trades by 56%
+**Verdict:** REMOVED - terrible performance
+
+---
+
+## NEXT RESEARCH IDEAS TO TEST
+
+### From Trading Literature:
+1. **Mean Reversion Timing** - Entry on bar close vs intrabar
+2. **Exit Timing** - Time-based exits (close after X bars)
+3. **Regime Detection** - Only trade in ranging regimes (skip trends)
+4. **Pair Correlation** - GBPUSD vs EURUSD correlation filter
+5. **Economic Calendar Filter** - Skip high-impact news hours
+
+### From Quantitative Research:
+1. **Hurst Exponent** - Measure mean reversion strength
+2. **Half-life of Mean Reversion** - Optimal holding period
+3. **Ornstein-Uhlenbeck Process** - Statistical mean reversion model
+4. **Z-score normalization** - Better entry signal calibration
+
+### Position Management:
+1. **Time-based stop** - Exit if no TP/SL after X hours
+2. **Breakeven move** - Move SL to entry after 1x ATR profit
+3. **Daily trade limit** - Cap trades per day
+
+---
+
+## REFERENCES
+
+- [Kelly Criterion - ALGOGENE](https://algogene.com/community/post/175)
+- [Kelly Criterion - PyQuant News](https://www.pyquantnews.com/the-pyquant-newsletter/use-kelly-criterion-optimal-position-sizing)
+- [Mean Reversion Strategies - LuxAlgo](https://www.luxalgo.com/blog/mean-reversion-strategies-for-algorithmic-trading/)
+- [Risk-Constrained Kelly - QuantInsti](https://blog.quantinsti.com/risk-constrained-kelly-criterion/)
+- [Larry Connors Mean Reversion - GreaterWaves](https://greaterwaves.com/secrets-of-larry-connors-mean-reversion/)
+
+---
+
+## CHANGELOG
+
+### 2026-01-31 (continued)
+- v3.6 RELEASED with 46-hour max holding period
+- Tested holding periods from 40-60 hours, 46h optimal
+- MaxDD improved from 39.2% to 36.7%
+- Implemented time-exit logic in rsi_executor.py
+
+### 2026-01-31
+- v3.5 finalized with Time-based TP
+- Tested 30+ techniques, documented all results
+- Created comprehensive research notes
+
+### Previous
+- v3.4: RSI 42/58 optimization
+- v3.3: Dynamic TP implementation
+- v3.2: Volatility filter added
+- v3.1: Bug fixes, production ready

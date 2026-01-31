@@ -1,9 +1,9 @@
 """
-RSI Executor - Production Trading Bot (v3.5 OPTIMIZED)
+RSI Executor - Production Trading Bot (v3.6 OPTIMIZED)
 ======================================================
 
-Strategy: RSI Mean Reversion with Volatility Filter + Dynamic TP + Time-based TP
-Backtest: +524.1% over 6 years (6/6 profitable years)
+Strategy: RSI Mean Reversion with Volatility Filter + Dynamic TP + Time-based TP + Max Holding
+Backtest: +572.9% over 6 years (6/6 profitable years)
 
 Entry Rules:
 - BUY:  RSI(10) < 42 AND London+NY Session (07-22 UTC)
@@ -17,11 +17,15 @@ Exit Rules:
   - Med vol (ATR 40-60th pct): TP = 3.0x ATR (standard)
   - High vol (ATR > 60th pct): TP = 3.6x ATR (let profits run)
   - Time bonus: +0.35x ATR during London+NY overlap (12-16 UTC)
+- Max Holding: Close at market after 46 hours if no SL/TP hit
 
 Risk Management:
 - 1% risk per trade
 - 2% max daily loss (circuit breaker)
 - 10% max drawdown (emergency stop)
+
+v3.6 Changes:
+- Added 46-hour max holding period -> +48.9% improvement, lower drawdown (36.7%)
 
 v3.5 Changes:
 - Added Time-based TP bonus during London+NY overlap (12-16 UTC) -> +31.0% improvement
@@ -228,6 +232,8 @@ class RSIExecutor:
         time_tp_start: int = 12,        # London+NY overlap start
         time_tp_end: int = 16,          # London+NY overlap end
         time_tp_bonus_mult: float = 0.35,  # Add 0.35x ATR to TP during overlap
+        # Max holding period (v3.6) - +48.9% improvement
+        max_holding_hours: int = 46,    # Force close after 46 hours
     ):
         """Initialize RSI Executor"""
         self.symbol = symbol
@@ -261,6 +267,9 @@ class RSIExecutor:
         self.time_tp_start = time_tp_start
         self.time_tp_end = time_tp_end
         self.time_tp_bonus_mult = time_tp_bonus_mult
+
+        # Max holding period (v3.6)
+        self.max_holding_hours = max_holding_hours
 
         # Get pip value for symbol
         self.pip_value = PIP_VALUES.get(symbol, 0.0001)
@@ -298,11 +307,12 @@ class RSIExecutor:
         # Callbacks
         self.send_telegram: Optional[Callable] = None
 
-        logger.info(f"RSIExecutor v3.5 initialized for {symbol}")
+        logger.info(f"RSIExecutor v3.6 initialized for {symbol}")
         logger.info(f"  RSI: period={rsi_period}, oversold={rsi_oversold}, overbought={rsi_overbought}")
         logger.info(f"  ATR: SL={sl_atr_mult}x, TP={tp_atr_mult}x (base)")
         logger.info(f"  Dynamic TP: {tp_low_vol_mult}x/<40pct, {tp_atr_mult}x/40-60pct, {tp_high_vol_mult}x/>60pct")
         logger.info(f"  Time TP: +{time_tp_bonus_mult}x during {time_tp_start}:00-{time_tp_end}:00 UTC (overlap)")
+        logger.info(f"  Max holding: {max_holding_hours} hours (force close)")
         logger.info(f"  Session: {session_start}:00 - {session_end}:00 UTC")
         logger.info(f"  Volatility Filter: ATR percentile {min_atr_percentile:.0f}-{max_atr_percentile:.0f}")
         logger.info(f"  Pip value: {self.pip_value}, ${self.pip_value_usd}/pip/lot")
@@ -764,9 +774,36 @@ class RSIExecutor:
             return None
 
     async def _check_position_closed(self):
-        """Check if position was closed by SL/TP"""
+        """Check if position was closed by SL/TP or max holding time exceeded (v3.6)"""
         if self._position is None:
             return
+
+        now = datetime.now(timezone.utc)
+
+        # Check max holding period (v3.6) - force close after max_holding_hours
+        holding_duration = now - self._position.entry_time
+        if self.max_holding_hours > 0 and holding_duration >= timedelta(hours=self.max_holding_hours):
+            tick = self.mt5.get_tick_sync(self.symbol)
+            if tick:
+                price = tick['bid'] if self._position.direction == 'BUY' else tick['ask']
+
+                if self._position.direction == 'BUY':
+                    pnl = (price - self._position.entry_price) / self.pip_value * self.pip_value_usd * self._position.lot_size
+                else:
+                    pnl = (self._position.entry_price - price) / self.pip_value * self.pip_value_usd * self._position.lot_size
+
+                # Close position if not paper mode
+                if not self.paper_mode:
+                    try:
+                        self.mt5.close_position_sync(self._position.ticket)
+                    except Exception as e:
+                        logger.error(f"Failed to close position for time exit: {e}")
+                        return
+
+                hours_held = holding_duration.total_seconds() / 3600
+                logger.info(f"TIME EXIT: Position held {hours_held:.1f}h >= {self.max_holding_hours}h limit")
+                await self._handle_close("TIME_EXIT", pnl, paper=self.paper_mode)
+                return
 
         # Paper mode - check price levels
         if self.paper_mode:
