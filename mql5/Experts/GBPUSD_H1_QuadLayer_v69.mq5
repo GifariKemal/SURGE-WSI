@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "SURGE-WSI"
 #property link      "https://github.com/surge-wsi"
-#property version   "6.91"
+#property version   "6.92"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -303,7 +303,8 @@ void OnTick()
    if(CopyBuffer(adxHandle, 0, 0, 3, adxMain) < 3) return;
 
    // Convert ATR to pips
-   double atrPips = atr[1] / pipSize * 10;
+   // pipSize = 0.0001 for GBPUSD (1 pip), so ATR/pipSize = pips directly
+   double atrPips = atr[1] / pipSize;
 
    // Check ATR range
    if(atrPips < MinATR_Pips || atrPips > MaxATR_Pips)
