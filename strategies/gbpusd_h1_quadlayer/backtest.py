@@ -32,6 +32,8 @@ STRATEGY_DIR = Path(__file__).parent
 # Project root is 2 levels up
 PROJECT_ROOT = STRATEGY_DIR.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+# Add strategies folder to allow package imports
+sys.path.insert(0, str(STRATEGY_DIR.parent))
 
 if sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -47,6 +49,39 @@ from enum import Enum
 from config import config
 from src.data.db_handler import DBHandler
 from src.utils.telegram import TelegramNotifier, TelegramFormatter
+
+# Import shared trading filters from strategy package
+from gbpusd_h1_quadlayer.trading_filters import (
+    IntraMonthRiskManager,
+    PatternBasedFilter,
+    ChoppinessFilter,
+    calculate_choppiness_index,
+    DirectionalMomentumFilter,
+    calculate_lot_size,
+    calculate_sl_tp,
+    get_monthly_quality_adjustment,
+    MONTHLY_TRADEABLE_PCT,
+    WARMUP_TRADES,
+    ROLLING_WINDOW,
+    ROLLING_WR_HALT,
+    ROLLING_WR_CAUTION,
+    RECOVERY_SIZE_MULT,
+    CAUTION_SIZE_MULT,
+    PROBE_TRADE_SIZE,
+    PROBE_QUALITY_EXTRA,
+    BOTH_DIRECTIONS_FAIL_THRESHOLD,
+    RECOVERY_WIN_REQUIRED,
+    CHOP_CHOPPY_THRESHOLD,
+    CHOP_TRENDING_THRESHOLD,
+    DIR_CONSEC_LOSS_CAUTION,
+    DIR_CONSEC_LOSS_WARNING,
+    DIR_CONSEC_LOSS_EXTREME,
+)
+from gbpusd_h1_quadlayer.strategy_config import (
+    SYMBOL, PIP_SIZE, PIP_VALUE,
+    RISK, TECHNICAL, INTRA_MONTH, PATTERN,
+    MONTHLY_RISK_MULT,
+)
 
 # Optional vector database integration
 try:
@@ -72,414 +107,55 @@ VECTOR_SYNC_ON_START = False  # Sync to Qdrant at backtest start
 # ============================================================
 SEND_TO_TELEGRAM = True  # Set False to disable Telegram notifications
 
+# ============================================================
+# LAYER 4 PATTERN FILTER CONFIG
+# ============================================================
+USE_PATTERN_FILTER = True  # Enable Layer 4 Pattern Filter
+
+# ============================================================
+# LAYER 5 CHOPPINESS INDEX FILTER CONFIG (DEPRECATED)
+# Based on E.W. Dreiss (1993) - Chaos Theory Applied to Markets
+# ============================================================
+USE_CHOPPINESS_FILTER = False  # DISABLED - use DirectionalMomentumFilter instead
+
+# ============================================================
+# LAYER 6 DIRECTIONAL MOMENTUM FILTER CONFIG
+# Detects when one direction is consistently failing
+# ============================================================
+USE_DIRECTIONAL_FILTER = False  # Disabled - ADX regime detection is primary
+
 
 # ============================================================
 # CONFIGURATION v6.4 - DUAL-LAYER QUALITY FILTER
+# Using values from strategy_config.py
 # ============================================================
-SYMBOL = "GBPUSD"
 INITIAL_BALANCE = 50_000.0
-RISK_PERCENT = 1.0
-
-SL_ATR_MULT = 1.5
-TP_RATIO = 1.5
-MAX_LOSS_PER_TRADE_PCT = 0.15
-
-PIP_VALUE = 10.0
-PIP_SIZE = 0.0001
-MAX_LOT = 5.0
-MIN_ATR = 8.0
-MAX_ATR = 30.0
+RISK_PERCENT = RISK.risk_percent
+SL_ATR_MULT = RISK.sl_atr_mult
+TP_RATIO = RISK.tp_ratio
+MAX_LOT = RISK.max_lot
+MAX_LOSS_PER_TRADE_PCT = RISK.max_loss_per_trade_pct
+MIN_ATR = TECHNICAL.min_atr
+MAX_ATR = TECHNICAL.max_atr
 
 # Base Quality Thresholds
-BASE_QUALITY = 65
-MIN_QUALITY_GOOD = 60
-MAX_QUALITY_BAD = 80
+BASE_QUALITY = TECHNICAL.base_quality_normal
+MIN_QUALITY_GOOD = TECHNICAL.base_quality_good
+MAX_QUALITY_BAD = TECHNICAL.base_quality_bad
 
-# ============================================================
-# LAYER 3: DYNAMIC INTRA-MONTH RISK ADJUSTMENT
-# Adaptive system - OPTIMIZED MODE
-# Balance between protection and allowing recovery trades
-# ============================================================
-MONTHLY_LOSS_THRESHOLD_1 = -150    # First warning: +5 quality
-MONTHLY_LOSS_THRESHOLD_2 = -250    # Second warning: +10 quality
-MONTHLY_LOSS_THRESHOLD_3 = -350    # Third warning: +15 quality
-MONTHLY_LOSS_STOP = -400           # Circuit breaker: stop for month
+# Layer 3: Intra-Month Risk Thresholds (for print_results display)
+MONTHLY_LOSS_THRESHOLD_1 = INTRA_MONTH.loss_threshold_1
+MONTHLY_LOSS_THRESHOLD_2 = INTRA_MONTH.loss_threshold_2
+MONTHLY_LOSS_THRESHOLD_3 = INTRA_MONTH.loss_threshold_3
+MONTHLY_LOSS_STOP = INTRA_MONTH.loss_stop
+CONSECUTIVE_LOSS_THRESHOLD = INTRA_MONTH.consec_loss_quality
+CONSECUTIVE_LOSS_MAX = INTRA_MONTH.consec_loss_day_stop
 
-CONSECUTIVE_LOSS_THRESHOLD = 3     # After 3 consecutive losses: +5 quality
-CONSECUTIVE_LOSS_MAX = 6           # After 6 consecutive losses: stop for day
-
-# Profit protection disabled
-PROFIT_PROTECTION_THRESHOLD = 0
-
-# No base protection
-MIN_BASE_QUALITY_ADJUSTMENT = 0
-
-# ============================================================
-# LAYER 4: PATTERN-BASED CHOPPY MARKET DETECTOR
-# Detects "whipsaw" markets where BOTH directions lose
-# This pattern can appear in ANY month, not just April
-# ============================================================
+# Layer 4: Pattern filter enabled
 PATTERN_FILTER_ENABLED = True
 
-# Warmup settings - filter observes but doesn't halt during warmup
-WARMUP_TRADES = 15                 # First 15 trades are warmup (observe only)
-
-# Probe trade settings - small "test" trade after halt
-PROBE_TRADE_SIZE = 0.4             # Probe trade is 40% size
-PROBE_QUALITY_EXTRA = 5            # Extra +5 quality for probe trades
-
-# Choppy market detection thresholds (relaxed)
-DIRECTION_TEST_WINDOW = 8          # Check last 8 trades for direction bias
-MIN_DIRECTION_WIN_RATE = 0.10      # If a direction has <10% WR, avoid it
-BOTH_DIRECTIONS_FAIL_THRESHOLD = 4 # If 4 trades in BOTH directions lose, HALT
-
-# Rolling performance tracking (relaxed)
-ROLLING_WINDOW = 10                # Track last 10 trades
-ROLLING_WR_HALT = 0.10             # If rolling WR drops below 10%, halt trading
-ROLLING_WR_CAUTION = 0.25          # If rolling WR below 25%, reduce size to 60%
-CAUTION_SIZE_MULT = 0.6            # Size during caution mode
-
-# Recovery settings
-RECOVERY_WIN_REQUIRED = 1          # Need 1 win to exit halt state
-RECOVERY_SIZE_MULT = 0.5           # Trade at 50% size during recovery
-
-# ==========================================================
-# LAYER 1: MONTHLY PROFILE (dari market analysis)
-# Tradeable percentage berdasarkan historical analysis
-# ==========================================================
-MONTHLY_TRADEABLE_PCT = {
-    # 2024
-    (2024, 1): 67,   # January - OK
-    (2024, 2): 55,   # February - POOR!
-    (2024, 3): 70,   # March - Good
-    (2024, 4): 80,   # April - Excellent
-    (2024, 5): 62,   # May - Below avg
-    (2024, 6): 68,   # June - OK
-    (2024, 7): 78,   # July - Good
-    (2024, 8): 65,   # August - Average
-    (2024, 9): 72,   # September - Good
-    (2024, 10): 58,  # October - Below avg
-    (2024, 11): 66,  # November - OK
-    (2024, 12): 60,  # December - Low (holidays)
-    # 2025 - Pattern filter handles all months dynamically
-    (2025, 1): 65, (2025, 2): 55, (2025, 3): 70, (2025, 4): 70,  # April - pattern filter handles
-    (2025, 5): 62, (2025, 6): 68, (2025, 7): 78, (2025, 8): 65,
-    (2025, 9): 72, (2025, 10): 58, (2025, 11): 66, (2025, 12): 60,
-    # 2026
-    (2026, 1): 65, (2026, 2): 55, (2026, 3): 70, (2026, 4): 80,
-    (2026, 5): 62, (2026, 6): 68, (2026, 7): 78, (2026, 8): 65,
-    (2026, 9): 72, (2026, 10): 58, (2026, 11): 66, (2026, 12): 60,
-}
-
-def get_monthly_quality_adjustment(dt: datetime) -> int:
-    """
-    Layer 1: Get quality adjustment based on monthly tradeable percentage
-
-    Returns:
-    - +50 if tradeable < 30% (NO TRADE - effectively halt)
-    - +35 if tradeable < 40% (HALT - near impossible to trade)
-    - +25 if tradeable < 50% (extremely poor month - near trading halt)
-    - +15 if tradeable < 60% (very poor month)
-    - +10 if tradeable < 70% (below average month)
-    - +5  if tradeable < 75% (slightly below average)
-    - 0   if tradeable >= 75% (good month)
-    """
-    key = (dt.year, dt.month)
-    tradeable_pct = MONTHLY_TRADEABLE_PCT.get(key, 70)  # Default 70% if unknown
-
-    if tradeable_pct < 30:
-        return 50  # NO TRADE - effectively halt all trading
-    elif tradeable_pct < 40:
-        return 35  # HALT - near impossible to trade
-    elif tradeable_pct < 50:
-        return 25  # Extremely poor - near halt
-    elif tradeable_pct < 60:
-        return 15  # Very poor month - high quality required
-    elif tradeable_pct < 70:
-        return 10  # Below average - moderate increase
-    elif tradeable_pct < 75:
-        return 5   # Slightly below average
-    else:
-        return 0   # Good month - no adjustment
-
-
-class IntraMonthRiskManager:
-    """
-    Layer 3: Dynamic Intra-Month Risk Adjustment
-
-    Tracks real-time monthly P&L and adjusts quality requirements
-    to prevent losing months through adaptive risk management.
-    Includes profit protection to avoid giving back gains.
-    """
-
-    def __init__(self):
-        self.current_month = None
-        self.monthly_pnl = 0.0
-        self.monthly_peak = 0.0  # Track peak profit for protection
-        self.consecutive_losses = 0
-        self.daily_losses = 0
-        self.current_day = None
-        self.month_stopped = False
-        self.day_stopped = False
-        self.profit_protection_active = False
-
-    def new_trade_check(self, dt: datetime) -> tuple:
-        """
-        Check if trading is allowed and get dynamic adjustment
-
-        Returns:
-            (can_trade: bool, dynamic_adj: int, reason: str)
-        """
-        month_key = (dt.year, dt.month)
-        day_key = dt.date()
-
-        # Reset for new month
-        if self.current_month != month_key:
-            self.current_month = month_key
-            self.monthly_pnl = 0.0
-            self.monthly_peak = 0.0
-            self.consecutive_losses = 0
-            self.month_stopped = False
-            self.day_stopped = False
-            self.profit_protection_active = False
-
-        # Reset for new day
-        if self.current_day != day_key:
-            self.current_day = day_key
-            self.daily_losses = 0
-            self.day_stopped = False
-
-        # Check circuit breakers
-        if self.month_stopped:
-            return False, 0, "MONTH_STOPPED"
-
-        if self.day_stopped:
-            return False, 0, "DAY_STOPPED"
-
-        # Calculate dynamic adjustment based on monthly P&L
-        dynamic_adj = MIN_BASE_QUALITY_ADJUSTMENT  # Start with base (0)
-
-        # Monthly loss circuit breaker - tight at -$200
-        if self.monthly_pnl <= MONTHLY_LOSS_STOP:
-            self.month_stopped = True
-            return False, 0, f"MONTH_CIRCUIT_BREAKER (${self.monthly_pnl:.0f})"
-
-        # Profit protection (disabled if threshold is 0)
-        if PROFIT_PROTECTION_THRESHOLD > 0:
-            if self.monthly_peak >= PROFIT_PROTECTION_THRESHOLD and self.monthly_pnl < 0:
-                self.profit_protection_active = True
-                dynamic_adj += 10
-
-        # Monthly loss thresholds - optimized
-        if self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_3:
-            dynamic_adj += 15  # At -$350
-        elif self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_2:
-            dynamic_adj += 10  # At -$250
-        elif self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_1:
-            dynamic_adj += 5   # At -$150
-
-        # Adjustment for consecutive losses
-        if self.consecutive_losses >= CONSECUTIVE_LOSS_MAX:
-            self.day_stopped = True
-            return False, 0, f"CONSECUTIVE_LOSS_STOP ({self.consecutive_losses})"
-
-        if self.consecutive_losses >= CONSECUTIVE_LOSS_THRESHOLD:
-            dynamic_adj += 5   # After 3 consecutive losses
-
-        return True, dynamic_adj, "OK"
-
-    def record_trade(self, pnl: float, dt: datetime):
-        """Record trade result and update tracking"""
-        self.monthly_pnl += pnl
-
-        # Update peak profit
-        if self.monthly_pnl > self.monthly_peak:
-            self.monthly_peak = self.monthly_pnl
-
-        if pnl < 0:
-            self.consecutive_losses += 1
-            self.daily_losses += 1
-        else:
-            self.consecutive_losses = 0  # Reset on win
-
-    def get_status(self) -> dict:
-        """Get current risk manager status"""
-        return {
-            'month': self.current_month,
-            'monthly_pnl': self.monthly_pnl,
-            'monthly_peak': self.monthly_peak,
-            'consecutive_losses': self.consecutive_losses,
-            'month_stopped': self.month_stopped,
-            'day_stopped': self.day_stopped,
-            'profit_protection': self.profit_protection_active
-        }
-
-
-class PatternBasedFilter:
-    """
-    Layer 4: Pattern-Based Choppy Market Detector
-
-    Detects "whipsaw" markets where BOTH directions lose consistently.
-    This pattern can appear in ANY month, learned from April 2025 analysis.
-
-    Key features:
-    1. Probe trades - small test trades to verify market tradability
-    2. Direction-specific win rate tracking
-    3. Rolling win rate monitoring
-    4. Automatic halt when choppy market detected
-    5. Recovery mode with gradual size increase
-    """
-
-    def __init__(self):
-        self.trade_history = []  # List of (direction, pnl, timestamp)
-        self.is_halted = False
-        self.halt_reason = ""
-        self.in_recovery = False
-        self.recovery_wins = 0
-        self.current_month = None
-        self.probe_taken = False  # Has probe trade been taken this month?
-
-    def reset_for_month(self, month: int):
-        """Soft reset - keep history but reset monthly flags"""
-        self.current_month = month
-        self.probe_taken = False
-        # Don't reset trade_history - we want to learn across months!
-        # Only reset halt if we had recovery
-        if self.in_recovery and self.recovery_wins >= RECOVERY_WIN_REQUIRED:
-            self.is_halted = False
-            self.in_recovery = False
-            self.recovery_wins = 0
-
-    def _get_rolling_stats(self) -> dict:
-        """Calculate rolling statistics from recent trades"""
-        if len(self.trade_history) < 3:
-            return {'rolling_wr': 1.0, 'buy_wr': 1.0, 'sell_wr': 1.0, 'both_fail': False}
-
-        recent = self.trade_history[-ROLLING_WINDOW:]
-        wins = sum(1 for _, pnl, _ in recent if pnl > 0)
-        rolling_wr = wins / len(recent) if recent else 1.0
-
-        # Direction-specific stats
-        buy_trades = [(d, p) for d, p, _ in recent if d == 'BUY']
-        sell_trades = [(d, p) for d, p, _ in recent if d == 'SELL']
-
-        buy_wr = sum(1 for _, p in buy_trades if p > 0) / len(buy_trades) if buy_trades else 1.0
-        sell_wr = sum(1 for _, p in sell_trades if p > 0) / len(sell_trades) if sell_trades else 1.0
-
-        # Check if BOTH directions are failing
-        both_fail = False
-        recent_window = self.trade_history[-BOTH_DIRECTIONS_FAIL_THRESHOLD*2:]
-        if len(recent_window) >= BOTH_DIRECTIONS_FAIL_THRESHOLD * 2:
-            buy_losses = sum(1 for d, p, _ in recent_window if d == 'BUY' and p < 0)
-            sell_losses = sum(1 for d, p, _ in recent_window if d == 'SELL' and p < 0)
-            if buy_losses >= BOTH_DIRECTIONS_FAIL_THRESHOLD and sell_losses >= BOTH_DIRECTIONS_FAIL_THRESHOLD:
-                both_fail = True
-
-        return {
-            'rolling_wr': rolling_wr,
-            'buy_wr': buy_wr,
-            'sell_wr': sell_wr,
-            'both_fail': both_fail
-        }
-
-    def check_trade(self, direction: str) -> tuple:
-        """
-        Check if trade is allowed based on pattern analysis
-
-        Returns:
-            (can_trade: bool, extra_quality: int, size_multiplier: float, reason: str)
-        """
-        if not PATTERN_FILTER_ENABLED:
-            return True, 0, 1.0, "FILTER_DISABLED"
-
-        # During warmup, always allow trades (just observe)
-        if len(self.trade_history) < WARMUP_TRADES:
-            return True, 0, 1.0, "WARMUP"
-
-        # Check if halted
-        if self.is_halted and not self.in_recovery:
-            return False, 0, 1.0, f"HALTED: {self.halt_reason}"
-
-        stats = self._get_rolling_stats()
-
-        # Check for choppy market (both directions failing)
-        if stats['both_fail']:
-            self.is_halted = True
-            self.halt_reason = "BOTH_DIRECTIONS_FAIL"
-            self.in_recovery = True
-            self.recovery_wins = 0
-            return False, 0, 1.0, "CHOPPY_MARKET_DETECTED"
-
-        # Check rolling win rate
-        if stats['rolling_wr'] < ROLLING_WR_HALT:
-            self.is_halted = True
-            self.halt_reason = f"LOW_ROLLING_WR ({stats['rolling_wr']:.0%})"
-            self.in_recovery = True
-            self.recovery_wins = 0
-            return False, 0, 1.0, f"LOW_WIN_RATE ({stats['rolling_wr']:.0%})"
-
-        # Check direction-specific win rate (only if enough data)
-        if len(self.trade_history) >= 10:
-            if direction == 'BUY' and stats['buy_wr'] < MIN_DIRECTION_WIN_RATE:
-                return False, 0, 1.0, f"BUY_DIRECTION_WEAK ({stats['buy_wr']:.0%})"
-            if direction == 'SELL' and stats['sell_wr'] < MIN_DIRECTION_WIN_RATE:
-                return False, 0, 1.0, f"SELL_DIRECTION_WEAK ({stats['sell_wr']:.0%})"
-
-        # Determine size and quality adjustments
-        size_mult = 1.0
-        extra_q = 0
-
-        # Recovery mode - trade smaller with probe
-        if self.in_recovery:
-            size_mult = RECOVERY_SIZE_MULT
-            extra_q = PROBE_QUALITY_EXTRA
-
-        # Caution mode - rolling WR below threshold
-        elif stats['rolling_wr'] < ROLLING_WR_CAUTION:
-            size_mult = CAUTION_SIZE_MULT
-            extra_q = 3
-
-        return True, extra_q, size_mult, "OK"
-
-    def record_trade(self, direction: str, pnl: float, timestamp):
-        """Record trade result and update pattern state"""
-        if not PATTERN_FILTER_ENABLED:
-            return
-
-        self.trade_history.append((direction, pnl, timestamp))
-
-        # Keep history manageable (last 50 trades)
-        if len(self.trade_history) > 50:
-            self.trade_history = self.trade_history[-50:]
-
-        # Mark probe as taken
-        if not self.probe_taken:
-            self.probe_taken = True
-
-        # Track recovery
-        if self.in_recovery:
-            if pnl > 0:
-                self.recovery_wins += 1
-                if self.recovery_wins >= RECOVERY_WIN_REQUIRED:
-                    self.is_halted = False
-                    self.in_recovery = False
-                    self.recovery_wins = 0
-            else:
-                self.recovery_wins = 0  # Reset on loss
-
-    def get_stats(self) -> dict:
-        """Get filter statistics"""
-        stats = self._get_rolling_stats()
-        return {
-            'total_history': len(self.trade_history),
-            'is_halted': self.is_halted,
-            'in_recovery': self.in_recovery,
-            'recovery_wins': self.recovery_wins,
-            'rolling_wr': stats['rolling_wr'],
-            'buy_wr': stats['buy_wr'],
-            'sell_wr': stats['sell_wr'],
-            'both_fail': stats['both_fail']
-        }
+# NOTE: IntraMonthRiskManager, PatternBasedFilter, and get_monthly_quality_adjustment
+# are now imported from trading_filters.py - no duplicate definitions needed
 
 
 # ==========================================================
@@ -699,6 +375,12 @@ def assess_market_condition(df: pd.DataFrame, col_map: dict, idx: int,
 
 
 def detect_regime(df: pd.DataFrame, col_map: dict) -> Tuple[Regime, float]:
+    """
+    Standard regime detection using EMA crossover.
+
+    Same as original v6.4 dual filter backtest.
+    The Pattern-Based Filter handles choppy market detection.
+    """
     if len(df) < 50:
         return Regime.SIDEWAYS, 0.5
     c = col_map['close']
@@ -801,7 +483,7 @@ def calculate_risk_multiplier(dt: datetime, entry_type: str, quality: float) -> 
 
 
 def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, dict, dict]:
-    """Run backtest with QUAD-LAYER quality filter (including April special)"""
+    """Run backtest with 5-LAYER quality filter (including Choppiness Index)"""
     trades = []
     balance = INITIAL_BALANCE
     peak_balance = balance
@@ -815,6 +497,12 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
     # Layer 4: Pattern-based choppy market filter
     pattern_filter = PatternBasedFilter()
     current_month_key = None
+
+    # Layer 5: Choppiness Index filter (DEPRECATED)
+    chop_filter = ChoppinessFilter() if USE_CHOPPINESS_FILTER else None
+
+    # Layer 6: Directional Momentum filter (NEW!)
+    directional_filter = DirectionalMomentumFilter() if USE_DIRECTIONAL_FILTER else None
 
     # Vector feature provider for fast cached feature access
     feature_provider = None
@@ -831,7 +519,7 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             feature_provider = None
 
     condition_stats = {'GOOD': 0, 'NORMAL': 0, 'BAD': 0, 'POOR_MONTH': 0, 'CAUTION': 0}
-    skip_stats = {'MONTH_STOPPED': 0, 'DAY_STOPPED': 0, 'DYNAMIC_ADJ': 0, 'PATTERN_STOPPED': 0}
+    skip_stats = {'MONTH_STOPPED': 0, 'DAY_STOPPED': 0, 'DYNAMIC_ADJ': 0, 'PATTERN_STOPPED': 0, 'CHOP_ADJUSTED': 0, 'DIR_ADJUSTED': 0}
 
     for i in range(100, len(df)):
         current_slice = df.iloc[:i+1]
@@ -891,8 +579,13 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
                 # Layer 3: Record trade for intra-month tracking
                 risk_manager.record_trade(pnl, current_time)
 
-                # Layer 4: Record trade for pattern filter
-                pattern_filter.record_trade(position.direction, pnl, current_time)
+                # Layer 4: Record trade for pattern filter (if enabled)
+                if USE_PATTERN_FILTER:
+                    pattern_filter.record_trade(position.direction, pnl, current_time)
+
+                # Layer 6: Record trade for directional filter (if enabled)
+                if USE_DIRECTIONAL_FILTER and directional_filter:
+                    directional_filter.record_trade(position.direction, pnl, current_time)
 
                 position = None
             continue
@@ -916,11 +609,14 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
                 skip_stats['DAY_STOPPED'] += 1
             continue
 
-        # LAYER 4: Reset pattern filter if month changed
+        # LAYER 4 & 6: Reset filters if month changed
         month_key = (current_time.year, current_time.month)
         if month_key != current_month_key:
             current_month_key = month_key
-            pattern_filter.reset_for_month(current_time.month)
+            if USE_PATTERN_FILTER:
+                pattern_filter.reset_for_month(current_time.month)
+            if USE_DIRECTIONAL_FILTER and directional_filter:
+                directional_filter.reset_for_month(current_time.month)
 
         regime, _ = detect_regime(current_slice, col_map)
         if regime == Regime.SIDEWAYS:
@@ -961,22 +657,57 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             if should_skip:
                 continue
 
-            # LAYER 4: Pattern-based filter check
-            pattern_can_trade, pattern_extra_q, pattern_size_mult, pattern_reason = pattern_filter.check_trade(poi['direction'])
-            if not pattern_can_trade:
-                skip_stats['PATTERN_STOPPED'] += 1
-                continue
+            # LAYER 4: Pattern-based filter check (optional)
+            pattern_size_mult = 1.0
+            pattern_extra_q = 0
+            if USE_PATTERN_FILTER:
+                pattern_can_trade, pattern_extra_q, pattern_size_mult, pattern_reason = pattern_filter.check_trade(poi['direction'])
+                if not pattern_can_trade:
+                    skip_stats['PATTERN_STOPPED'] += 1
+                    continue
 
-            # Apply pattern extra quality requirement
-            if pattern_extra_q > 0:
-                effective_quality = dynamic_quality + pattern_extra_q
+            # LAYER 5: Choppiness Index filter (DEPRECATED - disabled)
+            # This filter NEVER blocks trades, only adjusts size and quality
+            chop_size_mult = 1.0
+            chop_extra_q = 0
+            if USE_CHOPPINESS_FILTER and chop_filter:
+                # Update choppiness with current price data
+                h, l, c = col_map['high'], col_map['low'], col_map['close']
+                highs = df[h].iloc[max(0, i-20):i+1].tolist()
+                lows = df[l].iloc[max(0, i-20):i+1].tolist()
+                closes = df[c].iloc[max(0, i-20):i+1].tolist()
+                chop_filter.update(highs, lows, closes, current_time)
+
+                # Get adjustments based on choppiness
+                _, chop_extra_q, chop_size_mult, chop_reason = chop_filter.check_trade(poi['direction'])
+                if chop_extra_q > 0 or chop_size_mult < 1.0:
+                    skip_stats['CHOP_ADJUSTED'] += 1
+
+            # LAYER 6: Directional Momentum filter (NEW!)
+            # Detects when one direction is consistently failing
+            # This filter NEVER blocks trades, only adjusts size and quality
+            dir_size_mult = 1.0
+            dir_extra_q = 0
+            if USE_DIRECTIONAL_FILTER and directional_filter:
+                # Get adjustments based on directional performance
+                _, dir_extra_q, dir_size_mult, dir_reason = directional_filter.check_trade(poi['direction'])
+                if dir_extra_q > 0 or dir_size_mult < 1.0:
+                    skip_stats['DIR_ADJUSTED'] += 1
+
+            # Combine all extra quality requirements
+            total_extra_q = pattern_extra_q + chop_extra_q + dir_extra_q
+            if total_extra_q > 0:
+                effective_quality = dynamic_quality + total_extra_q
                 # Re-check if POI meets stricter quality
                 if poi['quality'] < effective_quality:
                     continue
 
+            # Combine all size multipliers
+            combined_size_mult = pattern_size_mult * chop_size_mult * dir_size_mult
+
             sl_pips = current_atr * SL_ATR_MULT
             tp_pips = sl_pips * TP_RATIO
-            risk_amount = balance * (RISK_PERCENT / 100.0) * risk_mult * pattern_size_mult
+            risk_amount = balance * (RISK_PERCENT / 100.0) * risk_mult * combined_size_mult
             lot_size = risk_amount / (sl_pips * PIP_VALUE)
             lot_size = max(0.01, min(MAX_LOT, round(lot_size, 2)))
 
@@ -1236,7 +967,19 @@ def print_results(stats: dict, trades: List[Trade], condition_stats: dict, skip_
         print(f"    Rolling WR caution: <{ROLLING_WR_CAUTION*100:.0f}% ({CAUTION_SIZE_MULT*100:.0f}% size)")
         print(f"    Both directions fail: {BOTH_DIRECTIONS_FAIL_THRESHOLD}+ each = HALT")
         print(f"    Recovery: need {RECOVERY_WIN_REQUIRED} win, {RECOVERY_SIZE_MULT*100:.0f}% size")
-    print(f"  Combined = Layer1 + Layer2 + Layer3 + Layer4")
+    if USE_CHOPPINESS_FILTER:
+        print(f"  Layer 5 - Choppiness Index Filter (DEPRECATED):")
+        print(f"    CHOP > {CHOP_CHOPPY_THRESHOLD}: Choppy (50% size, +10 quality)")
+        print(f"    CHOP > 70: Extreme Choppy (30% size, +20 quality)")
+        print(f"    CHOP < {CHOP_TRENDING_THRESHOLD}: Trending (full size)")
+        print(f"    (Never blocks trades, only adjusts)")
+    if USE_DIRECTIONAL_FILTER:
+        print(f"  Layer 6 - Directional Momentum Filter (NEW!):")
+        print(f"    {DIR_CONSEC_LOSS_CAUTION} consec losses: CAUTION (60% size, +5 quality)")
+        print(f"    {DIR_CONSEC_LOSS_WARNING} consec losses: WARNING (35% size, +15 quality)")
+        print(f"    {DIR_CONSEC_LOSS_EXTREME}+ consec losses: EXTREME (20% size, +25 quality)")
+        print(f"    (Per-direction tracking, never blocks)")
+    print(f"  Combined = Layer1 + Layer2 + Layer3 + Layer4 + Layer6")
 
     if skip_stats:
         print(f"\n[PROTECTION STATS]")
@@ -1245,6 +988,8 @@ def print_results(stats: dict, trades: List[Trade], condition_stats: dict, skip_
         print(f"  Day stop: {skip_stats.get('DAY_STOPPED', 0)}")
         print(f"  Dynamic quality adj: {skip_stats.get('DYNAMIC_ADJ', 0)}")
         print(f"  Pattern filter stops: {skip_stats.get('PATTERN_STOPPED', 0)}")
+        print(f"  Choppiness adjusted: {skip_stats.get('CHOP_ADJUSTED', 0)}")
+        print(f"  Directional adjusted: {skip_stats.get('DIR_ADJUSTED', 0)}")
 
     print(f"\n[MARKET CONDITIONS OBSERVED]")
     print(f"{'-'*50}")
