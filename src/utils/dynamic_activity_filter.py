@@ -7,10 +7,19 @@ Detects market activity dynamically based on:
 - Price movement
 - Spread conditions
 - Market hours (weekend check only)
+- Price Efficiency (NEW - from daily analysis)
+- Reversal Count (NEW - from daily analysis)
+- Day-of-week quality (NEW - from daily analysis)
 
 HYBRID MODE:
 - Trade during Kill Zones (traditional) OR
 - Trade when market shows high activity outside KZ
+
+KEY INSIGHTS FROM DAILY ANALYSIS:
+1. Friday is worst day (36.8 avg quality, 42.9% tradeable)
+2. Wednesday/Tuesday are best (76.8% tradeable, 53-57 quality)
+3. Problem conditions: LOW_EFFICIENCY (<0.10), MANY_REVERSALS (>10)
+4. These patterns are consistent across months
 
 References:
 - https://www.luxalgo.com/blog/volatility-strategies-in-algo-trading/
@@ -418,6 +427,247 @@ class DynamicActivityFilter:
             lines.append(f"   Spread: {activity.spread_pips:.1f} pips")
 
         return "\n".join(lines)
+
+
+# ============================
+# ENHANCED FILTER WITH DAILY ANALYSIS INSIGHTS
+# ============================
+
+@dataclass
+class EnhancedActivityResult:
+    """Enhanced activity result with efficiency and reversal analysis"""
+    can_trade: bool
+    quality_score: float  # 0-100
+    risk_multiplier: float
+    efficiency: float
+    reversal_count: int
+    choppiness: float
+    base_activity: ActivityScore
+    reasons: List[str]
+
+    @property
+    def is_optimal(self) -> bool:
+        return self.quality_score >= 60
+
+    @property
+    def is_marginal(self) -> bool:
+        return 40 <= self.quality_score < 60
+
+
+class EnhancedActivityFilter:
+    """
+    Enhanced filter with price efficiency and reversal detection.
+
+    Based on daily analysis insights:
+    - Price efficiency < 0.10 = LOW_EFFICIENCY (skip)
+    - Reversals > 10 = MANY_REVERSALS (reduce risk)
+    - Friday = worst day (-15 quality)
+    - Wednesday = best day (+8 quality)
+    """
+
+    # Day of week quality adjustments (from daily analysis)
+    DOW_ADJUSTMENTS = {
+        0: -5,    # Monday: 48.8 avg quality
+        1: +5,    # Tuesday: 53.2 avg quality
+        2: +8,    # Wednesday: 57.4 avg quality (best)
+        3: +3,    # Thursday: 51.5 avg quality
+        4: -15,   # Friday: 36.8 avg quality (worst)
+        5: -50,   # Saturday (closed)
+        6: -50,   # Sunday (mostly closed)
+    }
+
+    def __init__(
+        self,
+        base_filter: Optional[DynamicActivityFilter] = None,
+        efficiency_threshold: float = 0.10,
+        max_reversals: int = 10,
+        choppiness_threshold: float = 55.0,
+        min_quality_score: float = 40.0,
+    ):
+        """
+        Initialize enhanced filter.
+
+        Args:
+            base_filter: Base DynamicActivityFilter instance
+            efficiency_threshold: Below this = skip
+            max_reversals: Above this = reduce risk
+            choppiness_threshold: Above this = reduce risk
+            min_quality_score: Below this = don't trade
+        """
+        self.base_filter = base_filter or DynamicActivityFilter()
+        self.efficiency_threshold = efficiency_threshold
+        self.max_reversals = max_reversals
+        self.choppiness_threshold = choppiness_threshold
+        self.min_quality_score = min_quality_score
+
+    def calculate_price_efficiency(self, closes: pd.Series) -> float:
+        """Calculate price efficiency (net move / total movement)"""
+        if len(closes) < 2:
+            return 0.5
+
+        total_movement = sum(abs(closes.diff().dropna()))
+        net_movement = abs(closes.iloc[-1] - closes.iloc[0])
+
+        if total_movement == 0:
+            return 0.0
+
+        return net_movement / total_movement
+
+    def count_reversals(self, closes: pd.Series) -> int:
+        """Count direction changes"""
+        if len(closes) < 3:
+            return 0
+
+        directions = np.sign(closes.diff().dropna())
+        directions = directions[directions != 0]
+
+        if len(directions) < 2:
+            return 0
+
+        return int(np.sum(np.diff(directions) != 0))
+
+    def calculate_choppiness(
+        self, high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14
+    ) -> float:
+        """Calculate Choppiness Index"""
+        if len(high) < period:
+            return 50.0
+
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+        atr_sum = tr.rolling(period).sum()
+        highest_high = high.rolling(period).max()
+        lowest_low = low.rolling(period).min()
+        price_range = highest_high - lowest_low
+
+        chop = 100 * np.log10(atr_sum / price_range.replace(0, np.nan)) / np.log10(period)
+        result = chop.iloc[-1]
+
+        return result if not np.isnan(result) else 50.0
+
+    def evaluate(
+        self,
+        dt: datetime,
+        h1_data: pd.DataFrame,
+        current_high: float,
+        current_low: float,
+        in_killzone: bool = False,
+        session_name: str = "",
+    ) -> EnhancedActivityResult:
+        """
+        Evaluate market conditions with enhanced metrics.
+
+        Args:
+            dt: Current datetime
+            h1_data: Recent H1 data (20+ bars recommended)
+            current_high: Current bar high
+            current_low: Current bar low
+            in_killzone: Whether in Kill Zone
+            session_name: Current session name
+
+        Returns:
+            EnhancedActivityResult
+        """
+        reasons = []
+
+        # Get base activity score
+        base_activity = self.base_filter.check_activity(dt, current_high, current_low, h1_data)
+
+        # Get column names
+        col_map = {
+            'close': 'close' if 'close' in h1_data.columns else 'Close',
+            'high': 'high' if 'high' in h1_data.columns else 'High',
+            'low': 'low' if 'low' in h1_data.columns else 'Low',
+        }
+
+        close = h1_data[col_map['close']]
+        high = h1_data[col_map['high']]
+        low = h1_data[col_map['low']]
+
+        # Use last 20 bars for analysis
+        recent_close = close.tail(20)
+        recent_high = high.tail(30)
+        recent_low = low.tail(30)
+
+        # 1. Price efficiency
+        efficiency = self.calculate_price_efficiency(recent_close)
+        if efficiency < self.efficiency_threshold:
+            reasons.append(f"LOW_EFFICIENCY ({efficiency:.3f})")
+
+        # 2. Reversals
+        reversals = self.count_reversals(recent_close)
+        if reversals > self.max_reversals:
+            reasons.append(f"MANY_REVERSALS ({reversals})")
+
+        # 3. Choppiness
+        choppiness = self.calculate_choppiness(recent_high, recent_low, close.tail(30))
+        if choppiness > self.choppiness_threshold:
+            reasons.append(f"CHOPPY ({choppiness:.1f})")
+
+        # 4. Day of week
+        dow = dt.weekday()
+        dow_adj = self.DOW_ADJUSTMENTS.get(dow, 0)
+        if dow == 4:
+            reasons.append("FRIDAY_PENALTY")
+        elif dow == 2:
+            reasons.append("WEDNESDAY_BONUS")
+
+        # Calculate quality score
+        # Base from activity score (0-100) * 0.4
+        # + Efficiency score (0-50) * 0.3
+        # + Reversal score (0-50) * 0.2
+        # + Choppiness score (0-50) * 0.1
+        # + DOW adjustment
+
+        efficiency_score = min(50, efficiency * 250)  # 0.10 = 25, 0.20 = 50
+        reversal_score = max(0, 50 - max(0, reversals - 5) * 5)  # 5 rev = 50, 10 rev = 25, 15 rev = 0
+        chop_score = max(0, 50 - max(0, choppiness - 45))  # 45 = 50, 55 = 40, 65 = 30
+
+        quality_score = (
+            base_activity.score * 0.40 +
+            efficiency_score * 0.30 +
+            reversal_score * 0.20 +
+            chop_score * 0.10 +
+            dow_adj
+        )
+
+        quality_score = max(0, min(100, quality_score))
+
+        # Determine if tradeable
+        can_trade = (
+            quality_score >= self.min_quality_score and
+            base_activity.is_active and
+            efficiency >= 0.05  # Hard floor on efficiency
+        )
+
+        # Risk multiplier
+        if quality_score >= 70:
+            risk_mult = 1.2
+        elif quality_score >= 60:
+            risk_mult = 1.1
+        elif quality_score >= 50:
+            risk_mult = 1.0
+        elif quality_score >= 40:
+            risk_mult = 0.7
+        else:
+            risk_mult = 0.4
+
+        if not reasons:
+            reasons.append("NORMAL")
+
+        return EnhancedActivityResult(
+            can_trade=can_trade,
+            quality_score=quality_score,
+            risk_multiplier=risk_mult,
+            efficiency=efficiency,
+            reversal_count=reversals,
+            choppiness=choppiness,
+            base_activity=base_activity,
+            reasons=reasons,
+        )
 
 
 # Convenience function for backtesting

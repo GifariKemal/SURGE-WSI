@@ -1,0 +1,3859 @@
+{
+  "2015-01": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 23.32962359217552,
+    "avg_adx": 36.724535800121345,
+    "avg_choppiness": 48.117161371574824,
+    "price_efficiency": 0.04103513606613835,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      17,
+      15
+    ],
+    "worst_hours": [
+      6,
+      5,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Tue",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 17, 15]"
+  },
+  "2015-02": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 20.126220238095218,
+    "avg_adx": 38.15178913374237,
+    "avg_choppiness": 49.20431220997766,
+    "price_efficiency": 0.036383786213890656,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      11,
+      15
+    ],
+    "worst_hours": [
+      6,
+      7,
+      5
+    ],
+    "best_days": [
+      "Tue",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 11, 15]"
+  },
+  "2015-03": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 25.879496598639435,
+    "avg_adx": 37.23107922902151,
+    "avg_choppiness": 47.49276621571377,
+    "price_efficiency": 0.04471201497742374,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      11
+    ],
+    "worst_hours": [
+      7,
+      5,
+      0
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 11]"
+  },
+  "2015-04": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 24.58026244588748,
+    "avg_adx": 38.56659631035154,
+    "avg_choppiness": 46.44333240176943,
+    "price_efficiency": 0.04060539511168787,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      11,
+      17
+    ],
+    "worst_hours": [
+      0,
+      1,
+      2
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 11, 17]"
+  },
+  "2015-05": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 25.92926587301582,
+    "avg_adx": 40.39358309118406,
+    "avg_choppiness": 48.301777715308454,
+    "price_efficiency": 0.004642052990345706,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      11,
+      17
+    ],
+    "worst_hours": [
+      2,
+      23,
+      6
+    ],
+    "best_days": [
+      "Fri",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 11, 17]"
+  },
+  "2015-06": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 23.887053571428535,
+    "avg_adx": 34.522957204395574,
+    "avg_choppiness": 48.34630193590101,
+    "price_efficiency": 0.0335372653984642,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      15,
+      17
+    ],
+    "worst_hours": [
+      6,
+      2,
+      1
+    ],
+    "best_days": [
+      "Wed",
+      "Mon"
+    ],
+    "worst_days": [
+      "Fri",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 15, 17]"
+  },
+  "2015-07": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 21.21300465838505,
+    "avg_adx": 35.894390441376615,
+    "avg_choppiness": 48.98703476842382,
+    "price_efficiency": 0.007794358694167554,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      11
+    ],
+    "worst_hours": [
+      2,
+      6,
+      7
+    ],
+    "best_days": [
+      "Mon",
+      "Wed"
+    ],
+    "worst_days": [
+      "Thu",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 11]"
+  },
+  "2015-08": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 21.119600340136103,
+    "avg_adx": 35.75672804354039,
+    "avg_choppiness": 49.677310416059164,
+    "price_efficiency": 0.02681443387006467,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      11,
+      15
+    ],
+    "worst_hours": [
+      2,
+      1,
+      7
+    ],
+    "best_days": [
+      "Tue",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 11, 15]"
+  },
+  "2015-09": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 19.90619588744597,
+    "avg_adx": 40.95878303051361,
+    "avg_choppiness": 48.12555266656974,
+    "price_efficiency": 0.020722039504952345,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      17,
+      18
+    ],
+    "worst_hours": [
+      6,
+      7,
+      2
+    ],
+    "best_days": [
+      "Fri",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 17, 18]"
+  },
+  "2015-10": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.91493629709954,
+    "avg_adx": 39.02760651717508,
+    "avg_choppiness": 47.73644079169277,
+    "price_efficiency": 0.03211275945565849,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      15,
+      16
+    ],
+    "worst_hours": [
+      1,
+      7,
+      6
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 15, 16]"
+  },
+  "2015-11": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.16816893424028,
+    "avg_adx": 37.83317152478318,
+    "avg_choppiness": 47.1121429871934,
+    "price_efficiency": 0.04596296425620099,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      11
+    ],
+    "worst_hours": [
+      7,
+      6,
+      23
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Tue",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 11]"
+  },
+  "2015-12": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 19.648334709606427,
+    "avg_adx": 38.40023945108272,
+    "avg_choppiness": 49.029087582078105,
+    "price_efficiency": 0.03182275341516053,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      7,
+      6,
+      5
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  },
+  "2016-01": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 23.716041666666637,
+    "avg_adx": 40.90891343093664,
+    "avg_choppiness": 46.57692542201939,
+    "price_efficiency": 0.04309914204839238,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      11,
+      10
+    ],
+    "worst_hours": [
+      6,
+      5,
+      7
+    ],
+    "best_days": [
+      "Fri",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 11, 10]"
+  },
+  "2016-02": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 28.705102040816328,
+    "avg_adx": 39.30538468645214,
+    "avg_choppiness": 47.294831931248794,
+    "price_efficiency": 0.02249750221830961,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      11
+    ],
+    "worst_hours": [
+      5,
+      6,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Tue"
+    ],
+    "worst_days": [
+      "Mon",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 11]"
+  },
+  "2016-03": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 23.956597402597435,
+    "avg_adx": 43.12237762472486,
+    "avg_choppiness": 46.43916692630853,
+    "price_efficiency": 0.033046706314632905,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      16,
+      17,
+      10
+    ],
+    "worst_hours": [
+      5,
+      6,
+      0
+    ],
+    "best_days": [
+      "Thu",
+      "Tue"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [16, 17, 10]"
+  },
+  "2016-04": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 24.59365079365074,
+    "avg_adx": 36.82766566882572,
+    "avg_choppiness": 48.26005285955743,
+    "price_efficiency": 0.019813444316691263,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      16,
+      11,
+      15
+    ],
+    "worst_hours": [
+      1,
+      2,
+      23
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Tue",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [16, 11, 15]"
+  },
+  "2016-05": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 22.53946158008665,
+    "avg_adx": 35.50531926630354,
+    "avg_choppiness": 49.03292296535254,
+    "price_efficiency": 0.009376445360131339,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      11,
+      10
+    ],
+    "worst_hours": [
+      1,
+      2,
+      6
+    ],
+    "best_days": [
+      "Tue",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 11, 10]"
+  },
+  "2016-06": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 47.69237012987013,
+    "avg_adx": 39.96323547540418,
+    "avg_choppiness": 48.78199609164471,
+    "price_efficiency": 0.04684881661054272,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      10,
+      11,
+      17
+    ],
+    "worst_hours": [
+      1,
+      22,
+      23
+    ],
+    "best_days": [
+      "Fri",
+      "Mon"
+    ],
+    "worst_days": [
+      "Wed",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [10, 11, 17]"
+  },
+  "2016-07": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 34.78407029478463,
+    "avg_adx": 36.975369999601476,
+    "avg_choppiness": 49.155177521857404,
+    "price_efficiency": 0.003607191296568758,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      11,
+      14
+    ],
+    "worst_hours": [
+      0,
+      23,
+      22
+    ],
+    "best_days": [
+      "Wed",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 11, 14]"
+  },
+  "2016-08": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 21.91171066252585,
+    "avg_adx": 40.242853722188144,
+    "avg_choppiness": 48.814074766530844,
+    "price_efficiency": 0.00838619861786108,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      17,
+      15
+    ],
+    "worst_hours": [
+      7,
+      6,
+      0
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 17, 15]"
+  },
+  "2016-09": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 20.440354437229544,
+    "avg_adx": 39.45471509511369,
+    "avg_choppiness": 48.45124141421182,
+    "price_efficiency": 0.015191417403598194,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      17,
+      16
+    ],
+    "worst_hours": [
+      6,
+      7,
+      1
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 17, 16]"
+  },
+  "2016-10": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 28.350807823129234,
+    "avg_adx": 38.52464198856802,
+    "avg_choppiness": 50.39008945069787,
+    "price_efficiency": 0.04959371385040766,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      2,
+      17,
+      15
+    ],
+    "worst_hours": [
+      7,
+      6,
+      22
+    ],
+    "best_days": [
+      "Fri",
+      "Tue"
+    ],
+    "worst_days": [
+      "Mon",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [2, 17, 15]"
+  },
+  "2016-11": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 25.972933044185403,
+    "avg_adx": 34.74260092528694,
+    "avg_choppiness": 50.24276158326528,
+    "price_efficiency": 0.019677696667686612,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      11
+    ],
+    "worst_hours": [
+      6,
+      7,
+      1
+    ],
+    "best_days": [
+      "Wed",
+      "Mon"
+    ],
+    "worst_days": [
+      "Tue",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 11]"
+  },
+  "2016-12": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 22.725643805909467,
+    "avg_adx": 40.12865892675328,
+    "avg_choppiness": 49.29691492506704,
+    "price_efficiency": 0.013885618166526507,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      17,
+      15
+    ],
+    "worst_hours": [
+      5,
+      6,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Mon"
+    ],
+    "worst_days": [
+      "Tue",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 17, 15]"
+  },
+  "2017-01": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 26.000243506493536,
+    "avg_adx": 39.61351886025544,
+    "avg_choppiness": 47.48943972810677,
+    "price_efficiency": 0.017622412699349353,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      17,
+      10
+    ],
+    "worst_hours": [
+      6,
+      5,
+      7
+    ],
+    "best_days": [
+      "Tue",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 17, 10]"
+  },
+  "2017-02": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 20.648154761904802,
+    "avg_adx": 36.3326644186919,
+    "avg_choppiness": 49.74237710954905,
+    "price_efficiency": 0.0200777202072537,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      11,
+      10
+    ],
+    "worst_hours": [
+      6,
+      4,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 11, 10]"
+  },
+  "2017-03": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.559857142857087,
+    "avg_adx": 36.419673559609706,
+    "avg_choppiness": 48.802800495455784,
+    "price_efficiency": 0.015583088517052021,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      11,
+      14
+    ],
+    "worst_hours": [
+      6,
+      7,
+      5
+    ],
+    "best_days": [
+      "Wed",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 11, 14]"
+  },
+  "2017-04": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.80495535714285,
+    "avg_adx": 38.13803126941026,
+    "avg_choppiness": 50.88061653886798,
+    "price_efficiency": 0.04885822490532087,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      11
+    ],
+    "worst_hours": [
+      6,
+      7,
+      2
+    ],
+    "best_days": [
+      "Tue",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 11]"
+  },
+  "2017-05": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.889958592132484,
+    "avg_adx": 36.25513627340648,
+    "avg_choppiness": 49.01749197125788,
+    "price_efficiency": 0.005016704444134061,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      17,
+      10
+    ],
+    "worst_hours": [
+      6,
+      2,
+      5
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 17, 10]"
+  },
+  "2017-06": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 19.180925324675304,
+    "avg_adx": 40.21515645475191,
+    "avg_choppiness": 49.017522365496674,
+    "price_efficiency": 0.014780036528230062,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      16,
+      17
+    ],
+    "worst_hours": [
+      7,
+      6,
+      23
+    ],
+    "best_days": [
+      "Fri",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 16, 17]"
+  },
+  "2017-07": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.366397392290217,
+    "avg_adx": 35.34368762427495,
+    "avg_choppiness": 49.94742287389988,
+    "price_efficiency": 0.023804627871251746,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      17,
+      15
+    ],
+    "worst_hours": [
+      2,
+      7,
+      1
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 17, 15]"
+  },
+  "2017-08": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.126255175983484,
+    "avg_adx": 37.65702171036394,
+    "avg_choppiness": 49.70352813425608,
+    "price_efficiency": 0.03358948335024882,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      11
+    ],
+    "worst_hours": [
+      6,
+      1,
+      2
+    ],
+    "best_days": [
+      "Fri",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 11]"
+  },
+  "2017-09": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 20.764229024943358,
+    "avg_adx": 38.666717644207765,
+    "avg_choppiness": 46.83498824122156,
+    "price_efficiency": 0.044697742239842825,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      17,
+      13
+    ],
+    "worst_hours": [
+      6,
+      7,
+      2
+    ],
+    "best_days": [
+      "Fri",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 17, 13]"
+  },
+  "2017-10": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.565976731601666,
+    "avg_adx": 40.951375889170166,
+    "avg_choppiness": 47.27442174432141,
+    "price_efficiency": 0.009951786376560799,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      11
+    ],
+    "worst_hours": [
+      7,
+      6,
+      1
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 11]"
+  },
+  "2017-11": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.247316345893246,
+    "avg_adx": 35.32630048607089,
+    "avg_choppiness": 47.39994696332481,
+    "price_efficiency": 0.02454939350382078,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      14,
+      17,
+      11
+    ],
+    "worst_hours": [
+      6,
+      5,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Tue"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [14, 17, 11]"
+  },
+  "2017-12": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.94235119047614,
+    "avg_adx": 36.374929213584046,
+    "avg_choppiness": 49.02395059939574,
+    "price_efficiency": 0.0015015367289960243,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      13,
+      14
+    ],
+    "worst_hours": [
+      6,
+      5,
+      4
+    ],
+    "best_days": [
+      "Mon",
+      "Fri"
+    ],
+    "worst_days": [
+      "Tue",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 13, 14]"
+  },
+  "2018-01": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 21.60367965367968,
+    "avg_adx": 44.07522771048907,
+    "avg_choppiness": 46.96778190549288,
+    "price_efficiency": 0.0589439749063343,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      11,
+      15
+    ],
+    "worst_hours": [
+      6,
+      7,
+      0
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Tue",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 11, 15]"
+  },
+  "2018-02": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 26.08633928571431,
+    "avg_adx": 35.64653624582241,
+    "avg_choppiness": 47.83775362457353,
+    "price_efficiency": 0.03542964787711933,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      5,
+      0,
+      6
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  },
+  "2018-03": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.983785985877173,
+    "avg_adx": 35.69517488013425,
+    "avg_choppiness": 48.965606761445464,
+    "price_efficiency": 0.0254805273221295,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      14,
+      16
+    ],
+    "worst_hours": [
+      6,
+      1,
+      5
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Fri",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 14, 16]"
+  },
+  "2018-04": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.373951247165582,
+    "avg_adx": 38.539818039481005,
+    "avg_choppiness": 47.6295722241882,
+    "price_efficiency": 0.03047913657610104,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      10,
+      17
+    ],
+    "worst_hours": [
+      1,
+      7,
+      2
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Tue",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 10, 17]"
+  },
+  "2018-05": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 19.37368012422363,
+    "avg_adx": 33.081825513733826,
+    "avg_choppiness": 50.31148737738623,
+    "price_efficiency": 0.04412151252299964,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      16,
+      17
+    ],
+    "worst_hours": [
+      1,
+      7,
+      2
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 16, 17]"
+  },
+  "2018-06": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.58210034013607,
+    "avg_adx": 38.812397830473046,
+    "avg_choppiness": 48.363444130693814,
+    "price_efficiency": 0.009242223268153042,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      15,
+      14
+    ],
+    "worst_hours": [
+      1,
+      2,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 15, 14]"
+  },
+  "2018-07": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.92550054112555,
+    "avg_adx": 40.61960714039473,
+    "avg_choppiness": 48.21484012385536,
+    "price_efficiency": 0.008120329483695822,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      10,
+      11,
+      15
+    ],
+    "worst_hours": [
+      2,
+      1,
+      7
+    ],
+    "best_days": [
+      "Tue",
+      "Mon"
+    ],
+    "worst_days": [
+      "Fri",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [10, 11, 15]"
+  },
+  "2018-08": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.63907867494826,
+    "avg_adx": 37.444047421327014,
+    "avg_choppiness": 49.31830343228176,
+    "price_efficiency": 0.01754424105395891,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      14
+    ],
+    "worst_hours": [
+      1,
+      2,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 14]"
+  },
+  "2018-09": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.702321428571427,
+    "avg_adx": 40.80109661351286,
+    "avg_choppiness": 46.48225702871279,
+    "price_efficiency": 0.012031606751130462,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      16,
+      17
+    ],
+    "worst_hours": [
+      2,
+      5,
+      7
+    ],
+    "best_days": [
+      "Wed",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 16, 17]"
+  },
+  "2018-10": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.53413561076613,
+    "avg_adx": 44.0801290065654,
+    "avg_choppiness": 45.914347594416164,
+    "price_efficiency": 0.02712477396021677,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      10
+    ],
+    "worst_hours": [
+      6,
+      2,
+      1
+    ],
+    "best_days": [
+      "Thu",
+      "Tue"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 10]"
+  },
+  "2018-11": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 23.302697207915443,
+    "avg_adx": 37.37429527953181,
+    "avg_choppiness": 49.04409355131569,
+    "price_efficiency": 0.001690442813556614,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      12,
+      13,
+      10
+    ],
+    "worst_hours": [
+      5,
+      6,
+      4
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Fri",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [12, 13, 10]"
+  },
+  "2018-12": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 21.740550595238133,
+    "avg_adx": 32.00044366988841,
+    "avg_choppiness": 49.16359650923862,
+    "price_efficiency": 0.0028753141899611717,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      10,
+      16
+    ],
+    "worst_hours": [
+      5,
+      7,
+      6
+    ],
+    "best_days": [
+      "Tue",
+      "Wed"
+    ],
+    "worst_days": [
+      "Fri",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 10, 16]"
+  },
+  "2019-01": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 22.409036796536835,
+    "avg_adx": 39.15261038419939,
+    "avg_choppiness": 48.841347936102245,
+    "price_efficiency": 0.03042629213674766,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      10,
+      13
+    ],
+    "worst_hours": [
+      6,
+      5,
+      7
+    ],
+    "best_days": [
+      "Tue",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 10, 13]"
+  },
+  "2019-02": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.87489583333339,
+    "avg_adx": 35.20695994816156,
+    "avg_choppiness": 47.65229957482208,
+    "price_efficiency": 0.01763176996745267,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      10
+    ],
+    "worst_hours": [
+      6,
+      7,
+      5
+    ],
+    "best_days": [
+      "Tue",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 10]"
+  },
+  "2019-03": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 25.841417165668663,
+    "avg_adx": 36.42094891137513,
+    "avg_choppiness": 49.136614470504526,
+    "price_efficiency": 0.01794911215312477,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      13,
+      14
+    ],
+    "worst_hours": [
+      6,
+      5,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Tue"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 13, 14]"
+  },
+  "2019-04": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.81697781385277,
+    "avg_adx": 34.96287975364005,
+    "avg_choppiness": 51.47304785918327,
+    "price_efficiency": 0.000500213505764683,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      11
+    ],
+    "worst_hours": [
+      2,
+      7,
+      6
+    ],
+    "best_days": [
+      "Tue",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 11]"
+  },
+  "2019-05": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 14.400698757764026,
+    "avg_adx": 41.20059899391028,
+    "avg_choppiness": 47.77963749713466,
+    "price_efficiency": 0.05125466494100495,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      18,
+      15
+    ],
+    "worst_hours": [
+      6,
+      2,
+      1
+    ],
+    "best_days": [
+      "Fri",
+      "Tue"
+    ],
+    "worst_days": [
+      "Mon",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 18, 15]"
+  },
+  "2019-06": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.038779761904728,
+    "avg_adx": 36.62816428029218,
+    "avg_choppiness": 50.07917185369911,
+    "price_efficiency": 0.007910973690441574,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      14
+    ],
+    "worst_hours": [
+      2,
+      6,
+      1
+    ],
+    "best_days": [
+      "Tue",
+      "Thu"
+    ],
+    "worst_days": [
+      "Fri",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 14]"
+  },
+  "2019-07": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 14.631288819875774,
+    "avg_adx": 42.91693516891913,
+    "avg_choppiness": 49.87888996745978,
+    "price_efficiency": 0.06644587042020282,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      2,
+      6,
+      1
+    ],
+    "best_days": [
+      "Tue",
+      "Wed"
+    ],
+    "worst_days": [
+      "Fri",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  },
+  "2019-08": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.77398538961043,
+    "avg_adx": 34.46500340116201,
+    "avg_choppiness": 50.01069245892935,
+    "price_efficiency": 0.000885969271992611,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      15
+    ],
+    "worst_hours": [
+      2,
+      6,
+      1
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Wed",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 15]"
+  },
+  "2019-09": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 19.022888321995463,
+    "avg_adx": 37.09649182635663,
+    "avg_choppiness": 48.48686892217068,
+    "price_efficiency": 0.014921939538434192,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      10,
+      11
+    ],
+    "worst_hours": [
+      2,
+      6,
+      7
+    ],
+    "best_days": [
+      "Tue",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 10, 11]"
+  },
+  "2019-10": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 24.484303830227702,
+    "avg_adx": 34.142418626494916,
+    "avg_choppiness": 48.417070184077424,
+    "price_efficiency": 0.04740262151424004,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      12,
+      15
+    ],
+    "worst_hours": [
+      6,
+      5,
+      7
+    ],
+    "best_days": [
+      "Tue",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 12, 15]"
+  },
+  "2019-11": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 13.104970178926425,
+    "avg_adx": 36.173856875688074,
+    "avg_choppiness": 50.91045165210628,
+    "price_efficiency": 0.000490692182660316,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      14,
+      11
+    ],
+    "worst_hours": [
+      6,
+      5,
+      7
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 14, 11]"
+  },
+  "2019-12": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 19.74187925170067,
+    "avg_adx": 38.87494137086028,
+    "avg_choppiness": 46.80664931207783,
+    "price_efficiency": 0.03442109070449701,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      0,
+      10,
+      15
+    ],
+    "worst_hours": [
+      6,
+      7,
+      5
+    ],
+    "best_days": [
+      "Fri",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [0, 10, 15]"
+  },
+  "2020-01": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 14.592281105990697,
+    "avg_adx": 36.18657285600651,
+    "avg_choppiness": 47.389050349720186,
+    "price_efficiency": 0.0353509000782678,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      17,
+      13
+    ],
+    "worst_hours": [
+      6,
+      5,
+      1
+    ],
+    "best_days": [
+      "Fri",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 17, 13]"
+  },
+  "2020-02": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.958214285714314,
+    "avg_adx": 38.83139789370174,
+    "avg_choppiness": 47.52049011297096,
+    "price_efficiency": 0.046790031184763284,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      11,
+      17,
+      16
+    ],
+    "worst_hours": [
+      1,
+      7,
+      5
+    ],
+    "best_days": [
+      "Fri",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [11, 17, 16]"
+  },
+  "2020-03": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 48.34399999999997,
+    "avg_adx": 43.42490603811032,
+    "avg_choppiness": 48.777855823713445,
+    "price_efficiency": 0.015128461847737779,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      18,
+      9
+    ],
+    "worst_hours": [
+      6,
+      5,
+      7
+    ],
+    "best_days": [
+      "Fri",
+      "Thu"
+    ],
+    "worst_days": [
+      "Tue",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 18, 9]"
+  },
+  "2020-04": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 26.24341179653677,
+    "avg_adx": 32.13925776901915,
+    "avg_choppiness": 51.0120087617696,
+    "price_efficiency": 0.01232492178133871,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      10,
+      16
+    ],
+    "worst_hours": [
+      6,
+      5,
+      2
+    ],
+    "best_days": [
+      "Thu",
+      "Tue"
+    ],
+    "worst_days": [
+      "Fri",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 10, 16]"
+  },
+  "2020-05": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 21.58486394557828,
+    "avg_adx": 35.07725481478546,
+    "avg_choppiness": 50.112543886590394,
+    "price_efficiency": 0.022994223806760125,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      11
+    ],
+    "worst_hours": [
+      2,
+      6,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 11]"
+  },
+  "2020-06": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 24.675459956709965,
+    "avg_adx": 34.25749518133339,
+    "avg_choppiness": 48.755176473429636,
+    "price_efficiency": 0.004773693018377669,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      10
+    ],
+    "worst_hours": [
+      7,
+      23,
+      0
+    ],
+    "best_days": [
+      "Tue",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 10]"
+  },
+  "2020-07": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 19.51098602484475,
+    "avg_adx": 34.43600756001631,
+    "avg_choppiness": 48.75525995107814,
+    "price_efficiency": 0.06395662444432036,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      10
+    ],
+    "worst_hours": [
+      1,
+      7,
+      2
+    ],
+    "best_days": [
+      "Tue",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 10]"
+  },
+  "2020-08": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 21.076346371882117,
+    "avg_adx": 35.71080604731638,
+    "avg_choppiness": 48.96715305412065,
+    "price_efficiency": 0.027821999848381483,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      15
+    ],
+    "worst_hours": [
+      23,
+      2,
+      1
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Tue",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 15]"
+  },
+  "2020-09": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 24.647862554112525,
+    "avg_adx": 35.177214981408824,
+    "avg_choppiness": 47.786319090638465,
+    "price_efficiency": 0.03502050092906828,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      10
+    ],
+    "worst_hours": [
+      7,
+      1,
+      6
+    ],
+    "best_days": [
+      "Thu",
+      "Tue"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 10]"
+  },
+  "2020-10": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 22.374681485497472,
+    "avg_adx": 33.96999656058288,
+    "avg_choppiness": 48.56075396331563,
+    "price_efficiency": 0.001404948825803313,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      16,
+      14,
+      11
+    ],
+    "worst_hours": [
+      2,
+      6,
+      5
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [16, 14, 11]"
+  },
+  "2020-11": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 22.955881519274307,
+    "avg_adx": 32.49327146395515,
+    "avg_choppiness": 50.76085656318214,
+    "price_efficiency": 0.032840154867256756,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      11,
+      10
+    ],
+    "worst_hours": [
+      6,
+      7,
+      5
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Fri",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 11, 10]"
+  },
+  "2020-12": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 28.45201569264075,
+    "avg_adx": 40.469704801327254,
+    "avg_choppiness": 46.93353578385203,
+    "price_efficiency": 0.022504740503809222,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      10,
+      9
+    ],
+    "worst_hours": [
+      7,
+      5,
+      6
+    ],
+    "best_days": [
+      "Mon",
+      "Fri"
+    ],
+    "worst_days": [
+      "Thu",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 10, 9]"
+  },
+  "2021-01": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 21.076651785714308,
+    "avg_adx": 38.335277775984544,
+    "avg_choppiness": 50.21172575626581,
+    "price_efficiency": 0.0038141915593719157,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      16,
+      17,
+      10
+    ],
+    "worst_hours": [
+      5,
+      6,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Tue",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [16, 17, 10]"
+  },
+  "2021-02": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.923154761904748,
+    "avg_adx": 34.149700151150405,
+    "avg_choppiness": 49.40678734932108,
+    "price_efficiency": 0.02264777894368671,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      10,
+      16
+    ],
+    "worst_hours": [
+      7,
+      6,
+      23
+    ],
+    "best_days": [
+      "Fri",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 10, 16]"
+  },
+  "2021-03": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 21.538000000000025,
+    "avg_adx": 31.313485309718022,
+    "avg_choppiness": 51.67006685673056,
+    "price_efficiency": 0.01304764184821645,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      15
+    ],
+    "worst_hours": [
+      5,
+      22,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Mon"
+    ],
+    "worst_days": [
+      "Tue",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 15]"
+  },
+  "2021-04": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.136918290043297,
+    "avg_adx": 35.49912012994644,
+    "avg_choppiness": 50.46028708506263,
+    "price_efficiency": 0.002848939929328649,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      16,
+      17,
+      15
+    ],
+    "worst_hours": [
+      2,
+      6,
+      1
+    ],
+    "best_days": [
+      "Wed",
+      "Tue"
+    ],
+    "worst_days": [
+      "Fri",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [16, 17, 15]"
+  },
+  "2021-05": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.417899659863902,
+    "avg_adx": 38.35997420784709,
+    "avg_choppiness": 50.792343532162086,
+    "price_efficiency": 0.04503177088129678,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      15
+    ],
+    "worst_hours": [
+      2,
+      7,
+      6
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Fri",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 15]"
+  },
+  "2021-06": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.34945887445885,
+    "avg_adx": 40.54885821693916,
+    "avg_choppiness": 47.423150653043336,
+    "price_efficiency": 0.04469717920354002,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      2,
+      6,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Tue",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2021-07": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.05416666666667,
+    "avg_adx": 34.418169640823685,
+    "avg_choppiness": 47.884721214820566,
+    "price_efficiency": 0.007279578163495253,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      11
+    ],
+    "worst_hours": [
+      2,
+      7,
+      6
+    ],
+    "best_days": [
+      "Wed",
+      "Tue"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 11]"
+  },
+  "2021-08": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 13.965016233766246,
+    "avg_adx": 39.78354427752439,
+    "avg_choppiness": 49.480057291186064,
+    "price_efficiency": 0.020426215230526044,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      15
+    ],
+    "worst_hours": [
+      2,
+      7,
+      22
+    ],
+    "best_days": [
+      "Mon",
+      "Wed"
+    ],
+    "worst_days": [
+      "Fri",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 15]"
+  },
+  "2021-09": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.724350649350665,
+    "avg_adx": 40.06358188847025,
+    "avg_choppiness": 48.84164994851527,
+    "price_efficiency": 0.034515104868193064,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      2,
+      7,
+      6
+    ],
+    "best_days": [
+      "Tue",
+      "Wed"
+    ],
+    "worst_days": [
+      "Fri",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  },
+  "2021-10": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.324560657596386,
+    "avg_adx": 32.814521233701804,
+    "avg_choppiness": 50.21751315390962,
+    "price_efficiency": 0.025349298965807038,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      10
+    ],
+    "worst_hours": [
+      2,
+      6,
+      7
+    ],
+    "best_days": [
+      "Wed",
+      "Mon"
+    ],
+    "worst_days": [
+      "Thu",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 10]"
+  },
+  "2021-11": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.325426944971564,
+    "avg_adx": 33.23028384773364,
+    "avg_choppiness": 51.446078824876544,
+    "price_efficiency": 0.042296335842930265,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      10,
+      16
+    ],
+    "worst_hours": [
+      6,
+      1,
+      4
+    ],
+    "best_days": [
+      "Fri",
+      "Tue"
+    ],
+    "worst_days": [
+      "Thu",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 10, 16]"
+  },
+  "2021-12": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.221622670807445,
+    "avg_adx": 34.07454799693373,
+    "avg_choppiness": 49.87438031108104,
+    "price_efficiency": 0.02631906491507978,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      6,
+      5,
+      7
+    ],
+    "best_days": [
+      "Wed",
+      "Fri"
+    ],
+    "worst_days": [
+      "Tue",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2022-01": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 14.908120748299318,
+    "avg_adx": 34.02472634243559,
+    "avg_choppiness": 48.93152871169459,
+    "price_efficiency": 0.011384365471419324,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      7,
+      6,
+      1
+    ],
+    "best_days": [
+      "Thu",
+      "Tue"
+    ],
+    "worst_days": [
+      "Wed",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  },
+  "2022-02": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.025773809523816,
+    "avg_adx": 34.5505844935598,
+    "avg_choppiness": 50.55821999387978,
+    "price_efficiency": 0.00276692708333339,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      15
+    ],
+    "worst_hours": [
+      7,
+      2,
+      5
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Wed",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 15]"
+  },
+  "2022-03": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 20.552662337662337,
+    "avg_adx": 31.851642905505578,
+    "avg_choppiness": 50.38015491946279,
+    "price_efficiency": 0.025428902593323338,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      14,
+      10,
+      16
+    ],
+    "worst_hours": [
+      6,
+      5,
+      0
+    ],
+    "best_days": [
+      "Tue",
+      "Mon"
+    ],
+    "worst_days": [
+      "Fri",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [14, 10, 16]"
+  },
+  "2022-04": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.28443877551022,
+    "avg_adx": 34.39423593448301,
+    "avg_choppiness": 49.83902831570896,
+    "price_efficiency": 0.06133266848055829,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      9,
+      16
+    ],
+    "worst_hours": [
+      2,
+      1,
+      23
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 9, 16]"
+  },
+  "2022-05": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 24.640882034632032,
+    "avg_adx": 35.59812086406657,
+    "avg_choppiness": 50.14305693024146,
+    "price_efficiency": 0.002061441773920792,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      16,
+      14,
+      10
+    ],
+    "worst_hours": [
+      2,
+      23,
+      0
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [16, 14, 10]"
+  },
+  "2022-06": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 24.70768398268395,
+    "avg_adx": 37.61914515333017,
+    "avg_choppiness": 47.94442328673574,
+    "price_efficiency": 0.032166117538885874,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      15
+    ],
+    "worst_hours": [
+      0,
+      2,
+      23
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 15]"
+  },
+  "2022-07": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 25.206009070294773,
+    "avg_adx": 35.55018405093402,
+    "avg_choppiness": 48.468390432425316,
+    "price_efficiency": 0.0006599571027882813,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      10
+    ],
+    "worst_hours": [
+      23,
+      2,
+      0
+    ],
+    "best_days": [
+      "Wed",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 10]"
+  },
+  "2022-08": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 22.157802795031046,
+    "avg_adx": 34.6902345292275,
+    "avg_choppiness": 48.16339385698543,
+    "price_efficiency": 0.04441301970714702,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      23,
+      0,
+      1
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  },
+  "2022-09": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 34.49544101731602,
+    "avg_adx": 42.8291121558246,
+    "avg_choppiness": 47.679380782138566,
+    "price_efficiency": 0.024720095732996716,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      13
+    ],
+    "worst_hours": [
+      0,
+      23,
+      6
+    ],
+    "best_days": [
+      "Mon",
+      "Wed"
+    ],
+    "worst_days": [
+      "Thu",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 13]"
+  },
+  "2022-10": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 37.11611394557822,
+    "avg_adx": 36.619203498850844,
+    "avg_choppiness": 49.743608828460985,
+    "price_efficiency": 0.015417784487721239,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      18
+    ],
+    "worst_hours": [
+      0,
+      23,
+      6
+    ],
+    "best_days": [
+      "Fri",
+      "Tue"
+    ],
+    "worst_days": [
+      "Wed",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 18]"
+  },
+  "2022-11": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 31.022160477094168,
+    "avg_adx": 35.6733926843529,
+    "avg_choppiness": 48.430671470494005,
+    "price_efficiency": 0.035634906619738005,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      23,
+      0,
+      1
+    ],
+    "best_days": [
+      "Fri",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2022-12": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 27.118310657596357,
+    "avg_adx": 29.56110107144785,
+    "avg_choppiness": 50.249828251661775,
+    "price_efficiency": 0.002071925410685152,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      23,
+      0,
+      6
+    ],
+    "best_days": [
+      "Tue",
+      "Fri"
+    ],
+    "worst_days": [
+      "Wed",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2023-01": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 23.722905936568093,
+    "avg_adx": 32.59401992877283,
+    "avg_choppiness": 50.491233414015525,
+    "price_efficiency": 0.01840952088352767,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      23,
+      0,
+      6
+    ],
+    "best_days": [
+      "Thu",
+      "Tue"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2023-02": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 22.131755952380946,
+    "avg_adx": 37.94807725834094,
+    "avg_choppiness": 48.326812110656604,
+    "price_efficiency": 0.0278730260129455,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      0,
+      6,
+      23
+    ],
+    "best_days": [
+      "Tue",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  },
+  "2023-03": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 21.435363636363665,
+    "avg_adx": 39.49257859179082,
+    "avg_choppiness": 49.96506137790624,
+    "price_efficiency": 0.026168208319797548,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      23,
+      6,
+      0
+    ],
+    "best_days": [
+      "Wed",
+      "Mon"
+    ],
+    "worst_days": [
+      "Tue",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2023-04": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.68791666666666,
+    "avg_adx": 38.48240835261469,
+    "avg_choppiness": 47.40878706033433,
+    "price_efficiency": 0.029490549505570212,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      0,
+      23,
+      6
+    ],
+    "best_days": [
+      "Wed",
+      "Fri"
+    ],
+    "worst_days": [
+      "Tue",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2023-05": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.251889233954387,
+    "avg_adx": 35.598176762082225,
+    "avg_choppiness": 47.92285043989275,
+    "price_efficiency": 0.01385619753963658,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      16,
+      17,
+      15
+    ],
+    "worst_hours": [
+      2,
+      23,
+      0
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [16, 17, 15]"
+  },
+  "2023-06": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.36493381136234,
+    "avg_adx": 40.65013309820309,
+    "avg_choppiness": 46.017205718975966,
+    "price_efficiency": 0.030396402398401103,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      2,
+      6,
+      23
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  },
+  "2023-07": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.279443951493604,
+    "avg_adx": 36.512851243393314,
+    "avg_choppiness": 48.03375717441585,
+    "price_efficiency": 0.015440146658620216,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      16,
+      17
+    ],
+    "worst_hours": [
+      2,
+      6,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 16, 17]"
+  },
+  "2023-08": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.041047799081785,
+    "avg_adx": 33.37153317010123,
+    "avg_choppiness": 47.39166675938532,
+    "price_efficiency": 0.017472977227411157,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      2,
+      6,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2023-09": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.890919846199353,
+    "avg_adx": 35.97072412112442,
+    "avg_choppiness": 50.28231324865142,
+    "price_efficiency": 0.06202900057169577,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      16,
+      17
+    ],
+    "worst_hours": [
+      2,
+      6,
+      7
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 16, 17]"
+  },
+  "2023-10": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.796880293619406,
+    "avg_adx": 32.1428972966785,
+    "avg_choppiness": 47.53197949974822,
+    "price_efficiency": 0.00402495471925946,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      2,
+      7,
+      6
+    ],
+    "best_days": [
+      "Fri",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2023-11": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.539024045261662,
+    "avg_adx": 38.806529296078644,
+    "avg_choppiness": 47.924992757567985,
+    "price_efficiency": 0.05658502717326247,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      16,
+      17
+    ],
+    "worst_hours": [
+      6,
+      23,
+      5
+    ],
+    "best_days": [
+      "Tue",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 16, 17]"
+  },
+  "2023-12": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.871242236024845,
+    "avg_adx": 38.680990110564665,
+    "avg_choppiness": 48.764267325451904,
+    "price_efficiency": 0.012018763367684442,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      16,
+      17
+    ],
+    "worst_hours": [
+      6,
+      5,
+      4
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 16, 17]"
+  },
+  "2024-01": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.89933653303217,
+    "avg_adx": 31.7222756412257,
+    "avg_choppiness": 48.16722653413166,
+    "price_efficiency": 0.0049237256604242,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      6,
+      23,
+      1
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2024-02": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 13.913871635610825,
+    "avg_adx": 35.31629275799183,
+    "avg_choppiness": 49.25793314819023,
+    "price_efficiency": 0.008331195194469935,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      23,
+      6,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2024-03": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 12.171011904761944,
+    "avg_adx": 37.99587280812565,
+    "avg_choppiness": 48.0851002566361,
+    "price_efficiency": 0.0017343045438780935,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      14,
+      17,
+      16
+    ],
+    "worst_hours": [
+      6,
+      1,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [14, 17, 16]"
+  },
+  "2024-04": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 14.109472049689355,
+    "avg_adx": 37.350311710261366,
+    "avg_choppiness": 45.794999475367014,
+    "price_efficiency": 0.018629296520951157,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      23,
+      2,
+      7
+    ],
+    "best_days": [
+      "Fri",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2024-05": {
+    "volatility_regime": "NORMAL",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 11.927194166891786,
+    "avg_adx": 35.82575736649532,
+    "avg_choppiness": 47.19391304141595,
+    "price_efficiency": 0.03973940335415139,
+    "recommended_risk_mult": 0.73,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      2,
+      6,
+      7
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2024-06": {
+    "volatility_regime": "NORMAL",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 11.762655279503052,
+    "avg_adx": 35.954739194460586,
+    "avg_choppiness": 47.22150187188889,
+    "price_efficiency": 0.019135641759958688,
+    "recommended_risk_mult": 0.73,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      2,
+      7,
+      1
+    ],
+    "best_days": [
+      "Fri",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2024-07": {
+    "volatility_regime": "NORMAL",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 10.997731568998109,
+    "avg_adx": 37.23901835246477,
+    "avg_choppiness": 47.36890633720149,
+    "price_efficiency": 0.035189860374053084,
+    "recommended_risk_mult": 0.73,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      10
+    ],
+    "worst_hours": [
+      7,
+      23,
+      2
+    ],
+    "best_days": [
+      "Mon",
+      "Wed"
+    ],
+    "worst_days": [
+      "Tue",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 10]"
+  },
+  "2024-08": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.40333145115754,
+    "avg_adx": 38.31193834193378,
+    "avg_choppiness": 47.05672325160457,
+    "price_efficiency": 0.03400007698130633,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      6,
+      2,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Mon"
+    ],
+    "worst_days": [
+      "Wed",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  },
+  "2024-09": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.632682638272637,
+    "avg_adx": 37.37202884325363,
+    "avg_choppiness": 47.0599617428303,
+    "price_efficiency": 0.03203480324302962,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      2,
+      1,
+      7
+    ],
+    "best_days": [
+      "Fri",
+      "Wed"
+    ],
+    "worst_days": [
+      "Tue",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  },
+  "2024-10": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.052524979746114,
+    "avg_adx": 35.04067789310718,
+    "avg_choppiness": 49.41097223896776,
+    "price_efficiency": 0.060457762385182946,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      16,
+      17
+    ],
+    "worst_hours": [
+      2,
+      1,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 16, 17]"
+  },
+  "2024-11": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.19847678201712,
+    "avg_adx": 43.04561222262155,
+    "avg_choppiness": 46.07439975157743,
+    "price_efficiency": 0.0203654446628888,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      15
+    ],
+    "worst_hours": [
+      0,
+      23,
+      6
+    ],
+    "best_days": [
+      "Wed",
+      "Fri"
+    ],
+    "worst_days": [
+      "Mon",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 15]"
+  },
+  "2024-12": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.746465542738846,
+    "avg_adx": 32.185310791388396,
+    "avg_choppiness": 49.04141240178034,
+    "price_efficiency": 0.024508587312617777,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      6,
+      7,
+      5
+    ],
+    "best_days": [
+      "Wed",
+      "Fri"
+    ],
+    "worst_days": [
+      "Tue",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  },
+  "2025-01": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 20.719892784700114,
+    "avg_adx": 35.79227800750232,
+    "avg_choppiness": 47.08756441694946,
+    "price_efficiency": 0.012630995180907142,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      6,
+      7,
+      4
+    ],
+    "best_days": [
+      "Mon",
+      "Tue"
+    ],
+    "worst_days": [
+      "Thu",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2025-02": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 17.734145962732978,
+    "avg_adx": 35.4081295217514,
+    "avg_choppiness": 47.79980365921003,
+    "price_efficiency": 0.03494138863841262,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      10
+    ],
+    "worst_hours": [
+      6,
+      7,
+      5
+    ],
+    "best_days": [
+      "Mon",
+      "Thu"
+    ],
+    "worst_days": [
+      "Tue",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 10]"
+  },
+  "2025-03": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.479404761904767,
+    "avg_adx": 34.896967695536404,
+    "avg_choppiness": 50.775186632849696,
+    "price_efficiency": 0.040088010479860624,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      14,
+      16
+    ],
+    "worst_hours": [
+      1,
+      6,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Fri",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 14, 16]"
+  },
+  "2025-04": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 24.05333145115756,
+    "avg_adx": 37.89044451361743,
+    "avg_choppiness": 49.82510231212029,
+    "price_efficiency": 0.03330727773892278,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      10,
+      16
+    ],
+    "worst_hours": [
+      7,
+      5,
+      6
+    ],
+    "best_days": [
+      "Mon",
+      "Fri"
+    ],
+    "worst_days": [
+      "Tue",
+      "Wed"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 10, 16]"
+  },
+  "2025-05": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.777272727272695,
+    "avg_adx": 35.97188235540005,
+    "avg_choppiness": 48.65941187855214,
+    "price_efficiency": 0.013680699235738827,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      10,
+      17,
+      15
+    ],
+    "worst_hours": [
+      7,
+      2,
+      23
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Tue",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [10, 17, 15]"
+  },
+  "2025-06": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 18.40743862762492,
+    "avg_adx": 35.09423144303954,
+    "avg_choppiness": 48.83162981364244,
+    "price_efficiency": 0.029328833980681576,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      16,
+      15
+    ],
+    "worst_hours": [
+      23,
+      7,
+      2
+    ],
+    "best_days": [
+      "Thu",
+      "Fri"
+    ],
+    "worst_days": [
+      "Wed",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 16, 15]"
+  },
+  "2025-07": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.56959222252233,
+    "avg_adx": 42.457802233449975,
+    "avg_choppiness": 47.818195624368016,
+    "price_efficiency": 0.06046267087276524,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      2,
+      1,
+      7
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Fri",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2025-08": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.206433007985831,
+    "avg_adx": 35.1389096786412,
+    "avg_choppiness": 49.15100491535558,
+    "price_efficiency": 0.039969222736703315,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      17,
+      16
+    ],
+    "worst_hours": [
+      2,
+      7,
+      6
+    ],
+    "best_days": [
+      "Fri",
+      "Tue"
+    ],
+    "worst_days": [
+      "Wed",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 17, 16]"
+  },
+  "2025-09": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.41631846414458,
+    "avg_adx": 39.18040956679633,
+    "avg_choppiness": 48.81804137641267,
+    "price_efficiency": 0.007648379852422145,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      10,
+      16
+    ],
+    "worst_hours": [
+      2,
+      6,
+      7
+    ],
+    "best_days": [
+      "Tue",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 10, 16]"
+  },
+  "2025-10": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.128097943722935,
+    "avg_adx": 34.44509742976643,
+    "avg_choppiness": 48.585127736885774,
+    "price_efficiency": 0.035388911237842935,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      15,
+      18,
+      16
+    ],
+    "worst_hours": [
+      6,
+      2,
+      1
+    ],
+    "best_days": [
+      "Wed",
+      "Thu"
+    ],
+    "worst_days": [
+      "Mon",
+      "Fri"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [15, 18, 16]"
+  },
+  "2025-11": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 16.067965838509302,
+    "avg_adx": 30.807749499998334,
+    "avg_choppiness": 50.37767114894636,
+    "price_efficiency": 0.012154920979447993,
+    "recommended_risk_mult": 0.59,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      10,
+      14
+    ],
+    "worst_hours": [
+      7,
+      6,
+      4
+    ],
+    "best_days": [
+      "Fri",
+      "Wed"
+    ],
+    "worst_days": [
+      "Mon",
+      "Tue"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 10, 14]"
+  },
+  "2025-12": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 14.020186335403686,
+    "avg_adx": 35.72658295624972,
+    "avg_choppiness": 49.466762307556024,
+    "price_efficiency": 0.0328913064922986,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      6,
+      5,
+      7
+    ],
+    "best_days": [
+      "Thu",
+      "Wed"
+    ],
+    "worst_days": [
+      "Fri",
+      "Mon"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  },
+  "2026-01": {
+    "volatility_regime": "HIGH",
+    "trend_regime": "TRENDING",
+    "avg_atr_pips": 15.965571428571467,
+    "avg_adx": 32.53545352068054,
+    "avg_choppiness": 49.165227321396955,
+    "price_efficiency": 0.044431436495658665,
+    "recommended_risk_mult": 0.65,
+    "recommended_quality_threshold": 50.0,
+    "best_hours": [
+      17,
+      15,
+      16
+    ],
+    "worst_hours": [
+      6,
+      7,
+      8
+    ],
+    "best_days": [
+      "Tue",
+      "Wed"
+    ],
+    "worst_days": [
+      "Fri",
+      "Thu"
+    ],
+    "trading_notes": "TRENDING: Momentum entries preferred; LOW EFFICIENCY: Many false moves expected; Best hours: [17, 15, 16]"
+  }
+}

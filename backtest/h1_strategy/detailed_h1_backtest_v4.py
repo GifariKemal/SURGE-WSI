@@ -1,20 +1,28 @@
-"""Detailed H1 Backtest v3 FINAL - Optimized Production Version
+"""Detailed H1 Backtest v4 - Enhanced Market Condition Filters
 ================================================================
 
-Based on research and testing:
-- v2:    106 trades, 48.1% WR, +$2,018, PF 1.22 [BASELINE]
-- v3:     51 trades, 51.0% WR,   -$230, PF 0.84 [failed - too restrictive]
-- v3.1:   38 trades, 39.5% WR,    +$19, PF 1.01 [failed - too restrictive]
-- v3.2:  106 trades, 48.1% WR, +$1,961, PF 1.34 [SUCCESS - improved PF]
+Based on losing months analysis (Feb, Sep, Nov 2025):
+- Feb 2025: 22% WR, single direction bias, 5 consecutive losses
+- Sep 2025: 35% WR, low ATR (15.4 vs 17.4), Thursday 0% WR
+- Nov 2025: 33% WR, Thursday 0% WR
 
-v3 FINAL optimizations:
-1. Original HMM Regime (v2 baseline)
-2. Enhanced OB Quality scoring
-3. Quality-adjusted position sizing (0.8%-1.2%)
-4. Remove LOWER_HIGH entry (33% WR, -$250 in v3.2)
-5. Keep REJECTION, MOMENTUM, HIGHER_LOW (all profitable)
+v4 enhancements (based on research):
+1. Choppiness Index filter (skip > 61.8 = ranging market)
+2. ADX filter (skip < 20 = weak trend)
+3. ATR-based Stop Loss (adaptive instead of fixed 25p)
+4. Thursday position reduction (0.5x) or skip in weak market
+5. Regime confidence threshold (min 65%)
 
-Target: Maintain ~100 trades, improve profit factor further
+Research References:
+- LuxAlgo: Choppiness Index
+- FOREX.com: ADX Indicator
+- ResearchGate: Day-of-week effect in FX markets
+
+Previous versions:
+- v2:     106 trades, 48.1% WR, +$2,018, PF 1.22 [BASELINE]
+- v3 FINAL: 100 trades, 51% WR, +$2,669, PF 1.50 [CURRENT BEST]
+
+Target: Reduce losing months from 3 to 0-1
 
 Author: SURIOTA Team
 """
@@ -39,6 +47,7 @@ from config import config
 from src.data.db_handler import DBHandler
 from src.utils.killzone import KillZone
 from src.utils.dynamic_activity_filter import DynamicActivityFilter, ActivityLevel
+from src.utils.market_condition_filter import MarketConditionFilter, MarketCondition
 from src.analysis.kalman_filter import MultiScaleKalman
 from src.analysis.regime_detector import HMMRegimeDetector
 
@@ -143,6 +152,12 @@ class BacktestTrade:
     poi_type: str = ""
     entry_type: str = ""
     quality_score: float = 0.0
+    # V4 additions
+    sl_pips: float = 25.0
+    market_condition: str = ""
+    choppiness: float = 0.0
+    adx: float = 0.0
+    is_thursday: bool = False
 
 
 @dataclass
@@ -185,6 +200,16 @@ class BacktestStats:
 
     monthly_stats: Dict = field(default_factory=dict)
     avg_quality_score: float = 0.0
+
+    # V4 additions
+    signals_filtered_by_market: int = 0
+    signals_filtered_by_chop: int = 0
+    signals_filtered_by_adx: int = 0
+    signals_filtered_by_thursday: int = 0
+    signals_filtered_by_confidence: int = 0
+    avg_sl_pips: float = 25.0
+    thursday_trades: int = 0
+    thursday_pnl: float = 0.0
 
 
 # ============================================================================
@@ -372,7 +397,7 @@ def check_entry_trigger(bar: pd.Series, prev_bar: pd.Series, direction: str, col
 # ============================================================================
 
 def run_backtest(df: pd.DataFrame, use_hybrid: bool = True) -> tuple:
-    """Run final optimized backtest"""
+    """Run v4 backtest with enhanced market condition filters"""
 
     killzone = KillZone()
     activity_filter = DynamicActivityFilter(
@@ -383,8 +408,32 @@ def run_backtest(df: pd.DataFrame, use_hybrid: bool = True) -> tuple:
     )
     activity_filter.outside_kz_min_score = 60.0
 
+    # V4: Market Condition Filter (v4.2 - balanced)
+    # v4.0: too aggressive (234 filtered, 69 trades, 5 losing months)
+    # v4.1: too loose (3 filtered, 106 trades, 2 losing months)
+    # v4.2: balanced (target: ~85-95 trades, 1-2 losing months)
+    market_filter = MarketConditionFilter(
+        chop_ranging_threshold=65.0,      # Skip if choppiness > 65 (between 61.8 and 70)
+        adx_weak_threshold=18.0,          # Skip if ADX < 18 (between 15 and 20)
+        atr_sl_multiplier=1.5,            # SL = ATR * 1.5
+        min_sl_pips=15.0,
+        max_sl_pips=40.0,
+        regime_confidence_threshold=60.0, # Skip if confidence < 60% (between 55 and 65)
+        enable_thursday_filter=True,
+        thursday_position_multiplier=0.6, # Reduce position on Thursday
+        skip_thursday_in_weak_market=True, # Skip Thursday if market is weak
+        min_confluence_score=45.0         # Moderate threshold
+    )
+
     kalman = MultiScaleKalman()
     regime_detector = HMMRegimeDetector()
+
+    # V4 tracking counters
+    filtered_by_chop = 0
+    filtered_by_adx = 0
+    filtered_by_thursday = 0
+    filtered_by_confidence = 0
+    filtered_total = 0
 
     col_map = {
         'close': 'close' if 'close' in df.columns else 'Close',
@@ -544,6 +593,38 @@ def run_backtest(df: pd.DataFrame, use_hybrid: bool = True) -> tuple:
 
         direction = regime_info.bias
 
+        # =====================================================================
+        # V4: MARKET CONDITION FILTER
+        # =====================================================================
+        recent_for_filter = df.iloc[max(0, idx-30):idx+1]
+        regime_confidence = regime_info.confidence * 100 if hasattr(regime_info, 'confidence') else 80.0
+
+        market_condition = market_filter.analyze(
+            df=recent_for_filter,
+            current_time=current_time,
+            regime_confidence=regime_confidence,
+            direction=direction
+        )
+
+        if not market_condition.can_trade:
+            filtered_total += 1
+            # Track specific reasons
+            for reason in market_condition.reasons:
+                if "Ranging" in reason or "Chop" in reason:
+                    filtered_by_chop += 1
+                elif "ADX" in reason:
+                    filtered_by_adx += 1
+                elif "Thursday" in reason:
+                    filtered_by_thursday += 1
+                elif "confidence" in reason.lower():
+                    filtered_by_confidence += 1
+            continue
+
+        # Get ATR-based SL
+        sl_pips = market_condition.suggested_sl_pips
+        thursday_multiplier = market_condition.thursday_multiplier
+        is_thursday = market_condition.is_thursday
+
         poi = detect_order_block(df, idx, direction, col_map)
         if not poi:
             poi = detect_fvg(df, idx, direction, col_map)
@@ -563,12 +644,13 @@ def run_backtest(df: pd.DataFrame, use_hybrid: bool = True) -> tuple:
         if not entry_type:
             continue
 
-        sl_pips = 25.0
+        # V4: Use ATR-based SL (already calculated from market_condition)
         tp1_pips = sl_pips * 1.5
 
+        # V4: Quality-adjusted position sizing with Thursday multiplier
         base_risk = 0.01
         quality_multiplier = 0.8 + (poi['quality'] / 100) * 0.4
-        risk_pct = base_risk * quality_multiplier
+        risk_pct = base_risk * quality_multiplier * thursday_multiplier  # Apply Thursday reduction
 
         risk_amount = balance * risk_pct
         lot_size = risk_amount / (sl_pips * 10)
@@ -594,7 +676,13 @@ def run_backtest(df: pd.DataFrame, use_hybrid: bool = True) -> tuple:
             activity_score=activity_score,
             poi_type=poi['type'],
             entry_type=entry_type,
-            quality_score=poi['quality']
+            quality_score=poi['quality'],
+            # V4 additions
+            sl_pips=sl_pips,
+            market_condition=market_condition.condition.value,
+            choppiness=market_condition.choppiness,
+            adx=market_condition.adx,
+            is_thursday=is_thursday
         )
 
     if position:
@@ -612,6 +700,14 @@ def run_backtest(df: pd.DataFrame, use_hybrid: bool = True) -> tuple:
         trades.append(position)
 
     stats = calculate_stats(trades, balance, max_dd, df)
+
+    # V4: Add filter statistics
+    stats.signals_filtered_by_market = filtered_total
+    stats.signals_filtered_by_chop = filtered_by_chop
+    stats.signals_filtered_by_adx = filtered_by_adx
+    stats.signals_filtered_by_thursday = filtered_by_thursday
+    stats.signals_filtered_by_confidence = filtered_by_confidence
+
     return trades, stats, balance
 
 
@@ -687,6 +783,12 @@ def calculate_stats(trades: List[BacktestTrade], final_balance: float, max_dd: f
 
     stats.avg_quality_score = np.mean([t.quality_score for t in trades])
 
+    # V4: Average SL and Thursday trades
+    stats.avg_sl_pips = np.mean([t.sl_pips for t in trades]) if trades else 25.0
+    thursday_trades = [t for t in trades if t.is_thursday]
+    stats.thursday_trades = len(thursday_trades)
+    stats.thursday_pnl = sum(t.pnl for t in thursday_trades)
+
     # Monthly
     for t in trades:
         month_key = t.entry_time.strftime('%Y-%m')
@@ -705,18 +807,19 @@ def print_report(stats: BacktestStats, final_balance: float, trades: List[Backte
     """Print detailed report"""
     print()
     print("=" * 70)
-    print("H1 DETAILED BACKTEST v3 FINAL RESULTS")
-    print("(Production-Ready Optimized Version)")
+    print("H1 DETAILED BACKTEST v4 RESULTS")
+    print("(Enhanced Market Condition Filters)")
     print("=" * 70)
     print()
 
-    print("FINAL OPTIMIZATIONS:")
+    print("V4 ENHANCEMENTS (v4.2 balanced):")
     print("-" * 50)
-    print("+ Original HMM Regime (proven)")
-    print("+ Enhanced OB Quality scoring")
-    print("+ Quality-adjusted position sizing")
-    print("+ Removed LOWER_HIGH entry (33% WR, -$250)")
-    print("+ Kept: REJECTION, MOMENTUM, HIGHER_LOW, ENGULF")
+    print("+ Choppiness Index filter (skip > 65)")
+    print("+ ADX filter (skip < 18)")
+    print("+ ATR-based Stop Loss (adaptive)")
+    print("+ Thursday position reduction (0.6x) + skip if weak")
+    print("+ Regime confidence threshold (60%)")
+    print("+ Confluence score minimum (45)")
     print()
 
     print("OVERALL PERFORMANCE")
@@ -746,6 +849,22 @@ def print_report(stats: BacktestStats, final_balance: float, trades: List[Backte
     print(f"Max Drawdown:        ${stats.max_drawdown:,.2f} ({stats.max_drawdown_pct:.1f}%)")
     print(f"Avg Duration:        {stats.avg_trade_duration:.1f} hours")
     print(f"Avg Quality Score:   {stats.avg_quality_score:.1f}")
+    print(f"Avg SL (ATR-based):  {stats.avg_sl_pips:.1f} pips")
+    print()
+
+    # V4: Filter statistics
+    print("V4 MARKET CONDITION FILTERS")
+    print("-" * 50)
+    print(f"Signals filtered:    {stats.signals_filtered_by_market}")
+    print(f"  - By Choppiness:   {stats.signals_filtered_by_chop}")
+    print(f"  - By ADX:          {stats.signals_filtered_by_adx}")
+    print(f"  - By Thursday:     {stats.signals_filtered_by_thursday}")
+    print(f"  - By Confidence:   {stats.signals_filtered_by_confidence}")
+    thursday_wr = 0
+    if stats.thursday_trades > 0:
+        thursday_wins = sum(1 for t in trades if t.is_thursday and t.result == 'WIN')
+        thursday_wr = thursday_wins / stats.thursday_trades * 100
+    print(f"Thursday trades:     {stats.thursday_trades} (${stats.thursday_pnl:+,.2f}, {thursday_wr:.0f}% WR)")
     print()
 
     # Entry type breakdown
@@ -801,13 +920,13 @@ def print_report(stats: BacktestStats, final_balance: float, trades: List[Backte
 
     # Final comparison
     print("=" * 70)
-    print("FINAL VERSION COMPARISON")
+    print("VERSION COMPARISON")
     print("=" * 70)
-    print("v2:      106 trades, 48.1% WR, +$2,018, PF 1.22 [BASELINE]")
-    print("v3:       51 trades, 51.0% WR,   -$230, PF 0.84 [X failed]")
-    print("v3.1:     38 trades, 39.5% WR,    +$19, PF 1.01 [X failed]")
-    print("v3.2:    106 trades, 48.1% WR, +$1,961, PF 1.34 [improved]")
-    print(f"FINAL:  {stats.total_trades:>4} trades, {stats.win_rate:.1f}% WR, ${stats.total_pnl:+,.0f}, PF {stats.profit_factor:.2f}")
+    print("v2:       106 trades, 48.1% WR, +$2,018, PF 1.22 [BASELINE]")
+    print("v3 FINAL: 100 trades, 51.0% WR, +$2,669, PF 1.50 [prev best]")
+    print(f"v4:      {stats.total_trades:>4} trades, {stats.win_rate:.1f}% WR, ${stats.total_pnl:+,.0f}, PF {stats.profit_factor:.2f}")
+    losing_months = sum(1 for m, d in stats.monthly_stats.items() if d['pnl'] < 0)
+    print(f"Losing months: {losing_months}/{len(stats.monthly_stats)} (target: 0-1)")
     print("=" * 70)
     print()
 
@@ -848,10 +967,16 @@ async def send_telegram_report(stats: BacktestStats, trades: List[BacktestTrade]
             monthly_lines.append(f"  {month}: {data['trades']}T, {wr:.0f}% WR, ${data['pnl']:+.0f} {status}")
         monthly_str = "\n".join(monthly_lines)
 
+        # V4: Thursday stats
+        thursday_wr = 0
+        if stats.thursday_trades > 0:
+            thursday_wins = sum(1 for t in trades if t.is_thursday and t.result == 'WIN')
+            thursday_wr = thursday_wins / stats.thursday_trades * 100
+
         # Use HTML format (not Markdown)
-        msg = f"""🦅 <b>H1 BACKTEST v3 FINAL</b>
+        msg = f"""🦅 <b>H1 BACKTEST v4</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-Production-Ready Version
+Enhanced Market Condition Filters
 Period: Jan 2025 - Jan 2026 (13 months)
 
 <b>📊 PERFORMANCE</b>
@@ -861,7 +986,15 @@ Period: Jan 2025 - Jan 2026 (13 months)
 ├ Return: <b>{(final_balance/10000-1)*100:+.1f}%</b>
 ├ Profit Factor: <b>{stats.profit_factor:.2f}</b>
 ├ Max DD: ${stats.max_drawdown:,.2f} ({stats.max_drawdown_pct:.1f}%)
-└ Avg Quality: {stats.avg_quality_score:.1f}
+├ Avg Quality: {stats.avg_quality_score:.1f}
+└ Avg SL: {stats.avg_sl_pips:.1f}p (ATR-based)
+
+<b>🔬 V4 FILTERS</b>
+├ Signals filtered: {stats.signals_filtered_by_market}
+├ By Choppiness: {stats.signals_filtered_by_chop}
+├ By ADX: {stats.signals_filtered_by_adx}
+├ By Thursday: {stats.signals_filtered_by_thursday}
+└ Thursday trades: {stats.thursday_trades} ({thursday_wr:.0f}% WR, ${stats.thursday_pnl:+.0f})
 
 <b>🎯 ENTRY TYPES</b>
 {entry_str}
@@ -874,11 +1007,12 @@ Period: Jan 2025 - Jan 2026 (13 months)
 <b>📅 MONTHLY</b>
 {monthly_str}
 ━━━━━━━━━━━━━━━━━━━━━━━
-Losing months: {losing_months}/{total_months}
+Losing months: {losing_months}/{total_months} (target: 0-1)
 
 <b>📈 COMPARISON</b>
-v2:    106T, 48% WR, +$2,018, PF 1.22
-FINAL: {stats.total_trades}T, {stats.win_rate:.0f}% WR, ${stats.total_pnl:+,.0f}, PF {stats.profit_factor:.2f} ✅
+v2:       106T, 48% WR, +$2,018, PF 1.22
+v3 FINAL: 100T, 51% WR, +$2,669, PF 1.50
+v4:       {stats.total_trades}T, {stats.win_rate:.0f}% WR, ${stats.total_pnl:+,.0f}, PF {stats.profit_factor:.2f}
 
 <b>Final Balance: ${final_balance:,.2f}</b>
 """
@@ -894,9 +1028,9 @@ async def main():
     logger.add(sys.stderr, level="INFO", format="{time:HH:mm:ss} | {level:<8} | {message}")
 
     print("\n" + "=" * 70)
-    print("SURGE-WSI DETAILED H1 BACKTEST v3 FINAL")
+    print("SURGE-WSI DETAILED H1 BACKTEST v4")
     print("Period: 13 Months (Jan 2025 - Jan 2026)")
-    print("Strategy: Production-Ready Optimized Version")
+    print("Strategy: Enhanced Market Condition Filters")
     print("=" * 70)
 
     print("\n[1/3] Fetching H1 data...")
@@ -912,7 +1046,7 @@ async def main():
     print(f"      Loaded {len(df)} H1 bars")
     print(f"      Period: {df.index[0]} to {df.index[-1]}")
 
-    print("\n[2/3] Running final backtest...")
+    print("\n[2/3] Running v4 backtest with market condition filters...")
     trades, stats, final_balance = run_backtest(df, use_hybrid=True)
 
     print_report(stats, final_balance, trades)
@@ -921,7 +1055,7 @@ async def main():
     await send_telegram_report(stats, trades, final_balance)
 
     print("=" * 70)
-    print("BACKTEST v3 FINAL COMPLETE!")
+    print("BACKTEST v4 COMPLETE!")
     print("=" * 70)
 
 

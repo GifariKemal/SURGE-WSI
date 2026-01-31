@@ -74,8 +74,12 @@ class MT5Connector:
         self.mcp_modify_position = None
         self.mcp_close_position = None
 
-    def connect(self) -> bool:
+    def connect(self, force_login: bool = False) -> bool:
         """Initialize MT5 connection
+
+        Args:
+            force_login: If True and credentials provided, skip auto-connect
+                        and login directly with provided credentials
 
         Returns:
             True if connection successful, False otherwise
@@ -88,7 +92,29 @@ class MT5Connector:
             return self.connected
 
         try:
-            # First try connecting without credentials (use already logged-in terminal)
+            # If credentials provided and force_login, try with credentials FIRST
+            if force_login and self.login and self.password:
+                logger.info(f"Force login to account {self.login} @ {self.server}...")
+                init_args = {"login": self.login, "password": self.password}
+                if self.server:
+                    init_args["server"] = self.server
+                if self.terminal_path:
+                    init_args["path"] = self.terminal_path
+
+                if mt5.initialize(**init_args):
+                    self.connected = True
+                    terminal_info = mt5.terminal_info()
+                    account_info = mt5.account_info()
+                    logger.info(f"MT5 connected: {terminal_info.name} - Build {terminal_info.build}")
+                    if account_info:
+                        logger.info(f"Account: {account_info.login} ({account_info.server})")
+                    return True
+                else:
+                    self._last_error = mt5.last_error()
+                    logger.error(f"Force login failed: {self._last_error}")
+                    return False
+
+            # Try connecting without credentials (use already logged-in terminal)
             # This is the recommended approach - let MT5 terminal handle authentication
             if mt5.initialize():
                 self.connected = True

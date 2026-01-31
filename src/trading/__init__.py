@@ -4,14 +4,14 @@ Components:
 - EntryTrigger: LTF confirmation for precise entries
 - RiskManager: Dynamic position sizing by zone quality
 - ExitManager: Partial TP strategy with trailing stop
-- Executor: Trade execution engine
+- ExecutorH1V3: H1 v3 trade execution engine
 - TradeModeManager: Auto vs Signal-only mode management
 """
 
 from .entry_trigger import EntryTrigger, LTFEntrySignal
 from .risk_manager import RiskManager
 from .exit_manager import ExitManager, PositionState
-from .executor import TradeExecutor
+from .executor_h1_v3 import TradeExecutorH1V3
 from .trade_mode_manager import TradeModeManager, TradeMode, TradeModeConfig
 
 __all__ = [
@@ -20,7 +20,7 @@ __all__ = [
     "RiskManager",
     "ExitManager",
     "PositionState",
-    "TradeExecutor",
+    "TradeExecutorH1V3",
     "TradeModeManager",
     "TradeMode",
     "TradeModeConfig",
