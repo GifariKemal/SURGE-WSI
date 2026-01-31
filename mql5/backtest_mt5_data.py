@@ -43,18 +43,14 @@ def get_h1_data(symbol, start_date, end_date):
 
 def run_backtest(df):
     """Run RSI v3.7 backtest"""
-    # RSI(10) using Wilder's smoothing (EMA with alpha=1/period)
+    # RSI(10) using SMA method (faster reaction, better for mean reversion)
     rsi_period = 10
     delta = df['close'].diff()
-    gain = delta.where(delta > 0, 0)
-    loss = -delta.where(delta < 0, 0)
+    gain = delta.where(delta > 0, 0).rolling(rsi_period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(rsi_period).mean()
 
-    # Wilder's smoothing: EMA with alpha = 1/period
-    avg_gain = gain.ewm(alpha=1/rsi_period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1/rsi_period, adjust=False).mean()
-
-    # Safe division: when avg_loss is 0, RSI = 100
-    rs = avg_gain / avg_loss
+    # Safe division: when loss is 0, RSI approaches 100
+    rs = np.where(loss == 0, 100, gain / loss)
     df['rsi'] = 100 - (100 / (1 + rs))
     df['rsi'] = df['rsi'].fillna(50)  # Fill initial NaN with neutral value
 
@@ -249,17 +245,17 @@ def export_results(results, trades_df, equity_df):
     os.makedirs(output_dir, exist_ok=True)
 
     # Export trades to CSV
-    trades_df.to_csv(f"{output_dir}/RSI_v37_trades_2025_2026.csv", index=False)
+    trades_df.to_csv(f"{output_dir}/RSI_v37_trades_2020_2026.csv", index=False)
 
     # Export equity curve
-    equity_df.to_csv(f"{output_dir}/RSI_v37_equity_2025_2026.csv", index=False)
+    equity_df.to_csv(f"{output_dir}/RSI_v37_equity_2020_2026.csv", index=False)
 
     # Export summary
-    with open(f"{output_dir}/RSI_v37_summary_2025_2026.txt", 'w') as f:
+    with open(f"{output_dir}/RSI_v37_summary_2020_2026.txt", 'w') as f:
         f.write("=" * 60 + "\n")
         f.write("RSI MEAN REVERSION v3.7 - BACKTEST REPORT\n")
         f.write("=" * 60 + "\n")
-        f.write(f"Period: 2025-01-01 to 2026-01-31\n")
+        f.write(f"Period: 2020-01-01 to 2026-01-31 (6 Years)\n")
         f.write(f"Symbol: GBPUSD H1\n")
         f.write(f"Data Source: Finex MT5 Demo\n")
         f.write("\n")
@@ -309,7 +305,7 @@ def export_results(results, trades_df, equity_df):
 def main():
     print("=" * 60)
     print("RSI v3.7 BACKTEST - MT5 DATA (Finex)")
-    print("Period: 2025-01-01 to 2026-01-31")
+    print("Period: 2020-01-01 to 2026-01-31 (6 Years)")
     print("=" * 60)
 
     # Connect to MT5
@@ -320,7 +316,7 @@ def main():
     try:
         # Get H1 data
         print("\nFetching GBPUSD H1 data from MT5...")
-        start_date = datetime(2024, 10, 1, tzinfo=timezone.utc)  # Extra for warmup
+        start_date = datetime(2019, 10, 1, tzinfo=timezone.utc)  # Extra for warmup
         end_date = datetime(2026, 1, 31, 23, 59, tzinfo=timezone.utc)
 
         df = get_h1_data("GBPUSD", start_date, end_date)

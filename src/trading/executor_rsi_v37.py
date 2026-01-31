@@ -231,17 +231,13 @@ class RSIMeanReversionV37:
     # =========================================================================
 
     def _calculate_rsi(self, close: pd.Series) -> pd.Series:
-        """Calculate RSI using Wilder's smoothing (standard method)"""
+        """Calculate RSI using SMA method (faster reaction, better for mean reversion)"""
         delta = close.diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
-
-        # Wilder's smoothing: EMA with alpha = 1/period
-        avg_gain = gain.ewm(alpha=1/self.RSI_PERIOD, adjust=False).mean()
-        avg_loss = loss.ewm(alpha=1/self.RSI_PERIOD, adjust=False).mean()
+        gain = delta.where(delta > 0, 0).rolling(self.RSI_PERIOD).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(self.RSI_PERIOD).mean()
 
         # Safe division
-        rs = avg_gain / (avg_loss + 1e-10)
+        rs = gain / (loss + 1e-10)
         rsi = 100 - (100 / (1 + rs))
         return rsi.fillna(50)  # Fill initial NaN with neutral value
 
