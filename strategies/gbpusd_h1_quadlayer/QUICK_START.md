@@ -1,5 +1,32 @@
 # Quick Start Guide - GBPUSD H1 Quad-Layer Strategy
 
+## Auto Startup Checks
+
+When you run the bot, it automatically checks all prerequisites:
+
+```
+============================================================
+STARTUP CHECKS
+============================================================
+
+------------------------------------------------------------
+Service                   Status     Details
+------------------------------------------------------------
+Docker Engine             [OK]       Running
+PostgreSQL/TimescaleDB    [OK]       localhost:5434
+Redis Cache               [OK]       localhost:6381
+MT5 Terminal              [OK]       MetaTrader 5
+MT5 Account               [OK]       10009310110 @ MetaQuotes-Demo
+MT5 AutoTrading           [OK]       Enabled
+Telegram Bot              [OK]       Chat: -100354973...
+------------------------------------------------------------
+
+[OK] All checks passed!
+============================================================
+```
+
+If any critical check fails, the bot shows fix instructions and stops.
+
 ## Prerequisites
 
 | Requirement | Version | Notes |
@@ -41,11 +68,19 @@ This starts:
 
 ### 2.1 Open MetaTrader 5
 
-1. Open MT5 (NOT Finex terminal!)
-2. Login to **MetaQuotes-Demo** account
-3. Enable **AutoTrading** (Ctrl+E or button on toolbar)
+1. Open MT5 and login to **MetaQuotes-Demo** account
+2. Enable **AutoTrading** (Ctrl+E or button on toolbar)
 
-### 2.2 Verify Connection
+**Note:** If Finex MT5 is also running, the bot will **automatically switch** to MetaQuotes:
+
+```
+[INFO] Detected: Finex Bisnis Solusi MT5 Terminal
+[WARNING] [!] Finex detected! This strategy requires MetaQuotes-Demo.
+[WARNING] [!] Disconnecting from Finex and trying MetaQuotes...
+[INFO] [OK] Connected to MetaQuotes: 10009310110 @ MetaQuotes-Demo
+```
+
+### 2.2 Verify Connection (Optional)
 
 ```batch
 python -c "import MetaTrader5 as mt5; mt5.initialize(); print(mt5.account_info())"
