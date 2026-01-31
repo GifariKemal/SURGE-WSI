@@ -41,9 +41,16 @@ from enum import Enum
 
 from config import config
 from src.data.db_handler import DBHandler
+from src.utils.telegram import TelegramNotifier, TelegramFormatter
 
 import warnings
 warnings.filterwarnings('ignore')
+
+
+# ============================================================
+# TELEGRAM NOTIFICATION CONFIG
+# ============================================================
+SEND_TO_TELEGRAM = True  # Set False to disable Telegram notifications
 
 
 # ============================================================
@@ -87,7 +94,13 @@ MONTHLY_TRADEABLE_PCT = {
     (2024, 11): 66,  # November - OK
     (2024, 12): 60,  # December - Low (holidays)
     # 2025
-    (2025, 1): 65,   # January
+    (2025, 1): 65, (2025, 2): 55, (2025, 3): 70, (2025, 4): 80,
+    (2025, 5): 62, (2025, 6): 68, (2025, 7): 78, (2025, 8): 65,
+    (2025, 9): 72, (2025, 10): 58, (2025, 11): 66, (2025, 12): 60,
+    # 2026
+    (2026, 1): 65, (2026, 2): 55, (2026, 3): 70, (2026, 4): 80,
+    (2026, 5): 62, (2026, 6): 68, (2026, 7): 78, (2026, 8): 65,
+    (2026, 9): 72, (2026, 10): 58, (2026, 11): 66, (2026, 12): 60,
 }
 
 def get_monthly_quality_adjustment(dt: datetime) -> int:
@@ -622,6 +635,107 @@ def calculate_stats(trades: List[Trade], max_dd: float) -> dict:
     }
 
 
+async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats: dict,
+                               start_date: datetime, end_date: datetime):
+    """Send backtest results to Telegram"""
+    if not SEND_TO_TELEGRAM:
+        return
+
+    try:
+        telegram = TelegramNotifier(
+            bot_token=config.telegram.bot_token,
+            chat_id=config.telegram.chat_id
+        )
+
+        if not await telegram.initialize():
+            print("Failed to initialize Telegram")
+            return
+
+        # ============================================================
+        # MESSAGE 1: Main Performance Report (Tree Style)
+        # ============================================================
+        msg = TelegramFormatter.tree_header("BACKTEST RESULTS", "📊")
+        msg += f"<b>H1 v6.4 GBPUSD - Dual-Layer Quality</b>\n"
+        msg += f"Period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}\n\n"
+
+        # Performance metrics
+        msg += TelegramFormatter.tree_section("Performance", TelegramFormatter.CHART)
+        msg += TelegramFormatter.tree_item("Total Trades", str(stats['total_trades']))
+        msg += TelegramFormatter.tree_item("Trades/Day", f"{stats['trades_per_day']:.2f}")
+        msg += TelegramFormatter.tree_item("Win Rate", f"{stats['win_rate']:.1f}%")
+        msg += TelegramFormatter.tree_item("Profit Factor", f"{stats['profit_factor']:.2f}", last=True)
+
+        # P/L section
+        msg += TelegramFormatter.tree_section("Profit/Loss", TelegramFormatter.MONEY)
+        msg += TelegramFormatter.tree_item("Initial", f"${INITIAL_BALANCE:,.0f}")
+        msg += TelegramFormatter.tree_item("Final", f"${stats['final_balance']:,.0f}")
+        pnl_emoji = TelegramFormatter.CHECK if stats['net_pnl'] >= 0 else TelegramFormatter.CROSS
+        msg += TelegramFormatter.tree_item("Net P/L", f"{pnl_emoji} ${stats['net_pnl']:+,.0f}")
+        msg += TelegramFormatter.tree_item("Return", f"{(stats['net_pnl']/INITIAL_BALANCE)*100:+.1f}%", last=True)
+
+        # Risk metrics
+        msg += TelegramFormatter.tree_section("Risk Metrics", TelegramFormatter.WARNING)
+        msg += TelegramFormatter.tree_item("Max DD", f"{stats['max_dd_pct']:.1f}%")
+        msg += TelegramFormatter.tree_item("Avg Win", f"${stats['avg_win']:,.0f}")
+        msg += TelegramFormatter.tree_item("Avg Loss", f"${stats['avg_loss']:,.0f}")
+
+        # Losing months
+        if stats['losing_months'] == 0:
+            msg += TelegramFormatter.tree_item("Losing Months",
+                f"{TelegramFormatter.CHECK} 0/{stats['total_months']} (ZERO!)", last=True)
+        else:
+            msg += TelegramFormatter.tree_item("Losing Months",
+                f"{TelegramFormatter.CROSS} {stats['losing_months']}/{stats['total_months']}", last=True)
+
+        # Target check
+        msg += "\n<b>Targets:</b>\n"
+        msg += f"{TelegramFormatter.CHECK if stats['net_pnl'] >= 5000 else TelegramFormatter.CROSS} Profit >= $5K\n"
+        msg += f"{TelegramFormatter.CHECK if stats['profit_factor'] >= 2.0 else TelegramFormatter.CROSS} PF >= 2.0\n"
+        msg += f"{TelegramFormatter.CHECK if stats['losing_months'] == 0 else TelegramFormatter.CROSS} ZERO losing months"
+
+        await telegram.send(msg)
+
+        # ============================================================
+        # MESSAGE 2: Monthly + Market Condition (Same pre block)
+        # ============================================================
+        msg2 = "<pre>"
+        msg2 += f"📅 MONTHLY BREAKDOWN\n"
+        msg2 += f"{'Month':<9} {'P/L':>9} {'T%':>4} {'Adj':>4}\n"
+        msg2 += f"{'-'*9} {'-'*9} {'-'*4} {'-'*4}\n"
+
+        for month, pnl in stats['monthly'].items():
+            year = month.year
+            mon = month.month
+            tradeable = MONTHLY_TRADEABLE_PCT.get((year, mon), 70)
+            adj = get_monthly_quality_adjustment(datetime(year, mon, 1))
+            status = "✓" if pnl >= 0 else "✗"
+            month_str = f"{year}-{mon:02d}"
+            msg2 += f"{month_str:<9} ${pnl:>+7,.0f} {tradeable:>3}% +{adj:<2} {status}\n"
+
+        msg2 += f"\n🎯 BY MARKET CONDITION\n"
+        msg2 += f"{'Condition':<11} {'N':>4} {'WR':>4} {'P/L':>10}\n"
+        msg2 += f"{'-'*11} {'-'*4} {'-'*4} {'-'*10}\n"
+
+        for cond in ['GOOD', 'NORMAL', 'CAUTION', 'POOR_MONTH', 'BAD']:
+            cond_trades = [t for t in trades if t.market_condition == cond]
+            if cond_trades:
+                wins = len([t for t in cond_trades if t.pnl > 0])
+                total = len(cond_trades)
+                wr = wins / total * 100
+                net = sum(t.pnl for t in cond_trades)
+                status = "✓" if net >= 0 else "✗"
+                msg2 += f"{cond:<11} {total:>4} {wr:>3.0f}% ${net:>+8,.0f} {status}\n"
+
+        msg2 += "</pre>"
+
+        await telegram.send(msg2)
+
+        print("\n[TELEGRAM] Results sent successfully!")
+
+    except Exception as e:
+        print(f"\n[TELEGRAM] Failed to send: {e}")
+
+
 def print_results(stats: dict, trades: List[Trade], condition_stats: dict):
     print(f"\n{'='*70}")
     print(f"BACKTEST RESULTS - H1 v6.4 GBPUSD DUAL-LAYER QUALITY")
@@ -770,6 +884,9 @@ async def main():
 
     stats = calculate_stats(trades, max_dd)
     print_results(stats, trades, condition_stats)
+
+    # Send to Telegram
+    await send_telegram_report(stats, trades, condition_stats, start, end)
 
     # Save trades
     trades_df = pd.DataFrame([{

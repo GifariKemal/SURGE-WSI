@@ -19,7 +19,7 @@ class MT5Settings(BaseModel):
     """MetaTrader 5 connection settings"""
     login: Optional[int] = None
     password: Optional[str] = None
-    server: str = "FinexBisnisSolusi-Server"
+    server: Optional[str] = None  # None = auto-connect to active terminal
     terminal_path: Optional[str] = None
 
 
@@ -191,10 +191,13 @@ def load_config() -> Settings:
                                 setattr(section_obj, key, value)
 
     # Override with environment variables
-    settings.mt5.login = int(os.getenv("MT5_LOGIN", "0")) or None
-    settings.mt5.password = os.getenv("MT5_PASSWORD")
-    settings.mt5.server = os.getenv("MT5_SERVER", settings.mt5.server)
-    settings.mt5.terminal_path = os.getenv("MT5_TERMINAL_PATH")
+    mt5_login = os.getenv("MT5_LOGIN", "").strip()
+    settings.mt5.login = int(mt5_login) if mt5_login else None
+    settings.mt5.password = os.getenv("MT5_PASSWORD") or None
+    mt5_server = os.getenv("MT5_SERVER", "").strip()
+    settings.mt5.server = mt5_server if mt5_server else settings.mt5.server
+    mt5_path = os.getenv("MT5_TERMINAL_PATH", "").strip()
+    settings.mt5.terminal_path = mt5_path if mt5_path else None
 
     settings.database.host = os.getenv("POSTGRES_HOST", settings.database.host)
     settings.database.port = int(os.getenv("POSTGRES_PORT", settings.database.port))

@@ -823,6 +823,7 @@ class TelegramNotifier:
         self.on_test_buy: Optional[Callable] = None
         self.on_test_sell: Optional[Callable] = None
         self.on_autotrading: Optional[Callable] = None
+        self.on_help: Optional[Callable] = None  # Custom help message
 
     async def initialize(self) -> bool:
         """Initialize bot
@@ -1128,10 +1129,16 @@ class TelegramNotifier:
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
         try:
-            await update.message.reply_text(
-                TelegramFormatter.help_message(),
-                parse_mode='HTML'
-            )
+            if self.on_help:
+                # Use custom help handler
+                help_msg = await self.on_help()
+                await update.message.reply_text(help_msg, parse_mode='HTML')
+            else:
+                # Use default help message
+                await update.message.reply_text(
+                    TelegramFormatter.help_message(),
+                    parse_mode='HTML'
+                )
         except Exception as e:
             logger.error(f"Error handling /help: {e}")
             await update.message.reply_text(f"Error: {e}")
