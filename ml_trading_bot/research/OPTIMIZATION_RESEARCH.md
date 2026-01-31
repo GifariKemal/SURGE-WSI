@@ -325,6 +325,56 @@ Half-Kelly = 2.3%
 
 ---
 
+## LIBRARY & IMPLEMENTATION ANALYSIS ✅
+
+### RSI Calculation Methods Compared
+
+| Method | Return | WR | MaxDD | Notes |
+|--------|--------|-----|-------|-------|
+| **SMA (ours)** | **+618.2%** | **37.7%** | **30.7%** | Best for mean reversion |
+| RMA (standard) | +173.7% | 35.4% | 42.8% | Matches TradingView/TA-Lib |
+| EMA | +330.5% | 36.1% | 44.9% | More responsive |
+| pandas-ta | +173.7% | 35.4% | 42.8% | Uses RMA internally |
+
+**Key Finding:** Our SMA-based RSI significantly outperforms standard RMA calculation!
+- SMA is more responsive/noisy - better for catching mean reversion
+- RMA is smoother - misses some entry opportunities
+- **Verdict:** Keep SMA-based calculation
+
+### Transaction Costs Impact
+
+| Cost Model | Return | MaxDD | Notes |
+|------------|--------|-------|-------|
+| No costs | +618.2% | 30.7% | Backtest ideal |
+| Fixed 1p+0.5p | -39.5% | 69.6% | Too pessimistic |
+| Session-based | +142.8% | 61.5% | More realistic |
+| With volatility adj | +141.3% | 61.9% | Slightly worse |
+
+**Session Spread Model:**
+- London (07-12 UTC): 0.6 pip spread, 0.3 pip slip
+- Overlap (12-16 UTC): 0.4 pip spread, 0.2 pip slip
+- NY (16-22 UTC): 0.8 pip spread, 0.4 pip slip
+
+**Key Finding:** Transaction costs reduce returns by ~75%!
+- Strategy remains profitable with realistic costs
+- Need broker with tight spreads (<1 pip) for best results
+- Avoid trading during high-spread periods
+
+### Library Recommendations
+
+1. **Keep pandas-ta** - Good for most indicators, actively maintained
+2. **Consider TA-Lib** - More accurate, matches TradingView
+3. **Consider vectorbt** - Much faster backtesting for optimization
+4. **Consider ArbitrageLab** - For advanced O-U mean reversion
+
+Sources:
+- [QuantStart - Ornstein-Uhlenbeck](https://www.quantstart.com/articles/ornstein-uhlenbeck-simulation-with-python/)
+- [Hudson & Thames - Optimal Stopping](https://hudsonthames.org/optimal-stopping-in-pairs-trading-ornstein-uhlenbeck-model/)
+- [VectorBT Guide](https://algotrading101.com/learn/vectorbt-guide/)
+- [LuxAlgo - Slippage](https://www.luxalgo.com/blog/backtesting-limitations-slippage-and-liquidity-explained/)
+
+---
+
 ## NEXT RESEARCH IDEAS TO TEST
 
 ### From Trading Literature:
