@@ -134,16 +134,15 @@ class TradingBot:
             raise RuntimeError("Failed to connect to database")
 
         # Initialize broker (MT5 Connector with Adapter)
-        # Get MT5 credentials from config if available
-        mt5_login = getattr(config, 'mt5_login', None)
-        mt5_password = getattr(config, 'mt5_password', None)
-        mt5_server = getattr(config, 'mt5_server', None)
-
+        # Get MT5 credentials from config.mt5
         mt5_connector = MT5Connector(
-            login=mt5_login,
-            password=mt5_password,
-            server=mt5_server
+            login=config.mt5.login,
+            password=config.mt5.password,
+            server=config.mt5.server,
+            terminal_path=config.mt5.terminal_path
         )
+
+        logger.info(f"MT5 Config: server={config.mt5.server}, login={config.mt5.login or 'auto'}")
 
         if not mt5_connector.connect():
             raise RuntimeError("Failed to connect to MT5. Make sure MT5 terminal is running and logged in.")
