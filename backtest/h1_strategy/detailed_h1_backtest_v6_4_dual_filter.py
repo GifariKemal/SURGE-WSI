@@ -1,24 +1,22 @@
 """
-SURGE-WSI H1 v6.4 GBPUSD - DUAL-LAYER QUALITY FILTER
+SURGE-WSI H1 v6.9 GBPUSD - QUAD-LAYER QUALITY FILTER
 =====================================================
 
-Enhancement dari v6.3:
+Updated to v6.9 to match Live Executor and MQL5 EA.
+
+Layers:
 - Layer 1: MONTHLY PROFILE (dari market analysis data)
-  - Bulan dengan tradeable_pct < 60% → +15 quality requirement
-  - Bulan dengan tradeable_pct < 70% → +10 quality requirement
-  - Bulan dengan tradeable_pct >= 70% → no adjustment
+- Layer 2: REAL-TIME TECHNICAL (ATR Stability, Efficiency, Trend)
+- Layer 3: INTRA-MONTH RISK (dynamic quality adjustment)
+- Layer 4: PATTERN-BASED FILTER (choppy market detection)
 
-- Layer 2: REAL-TIME TECHNICAL (sama seperti v6.3)
-  - ATR Stability, Efficiency, Trend Strength
-
-Result: Dual protection against poor market conditions
-
-Market Analysis Data (GBPUSD Monthly):
-- January 2024: 67% tradeable
-- February 2024: 55% tradeable (POOR) - ini yg bikin loss
-- March 2024: 70% tradeable
-- April 2024: 80% tradeable (EXCELLENT)
-- dst...
+v6.9 Changes (synced with Live/MQL5):
+- MAX_ATR: 30 → 25 pips
+- Thursday mult: 0.4 → 0.8
+- Friday mult: 0.5 → 0.3
+- Hour 7, 11: skip (0.0)
+- London session: 8-10 UTC (not 7-11)
+- Session POI filter v6.8: skip OB@8,16 and EMA@13,14
 
 Author: SURIOTA Team
 """
@@ -69,7 +67,7 @@ SEND_TO_TELEGRAM = True  # Set False to disable Telegram notifications
 
 
 # ============================================================
-# CONFIGURATION v6.4 - DUAL-LAYER QUALITY FILTER
+# CONFIGURATION v6.9 - QUAD-LAYER QUALITY FILTER (synced)
 # ============================================================
 SYMBOL = "GBPUSD"
 INITIAL_BALANCE = 50_000.0
@@ -83,7 +81,7 @@ PIP_VALUE = 10.0
 PIP_SIZE = 0.0001
 MAX_LOT = 5.0
 MIN_ATR = 8.0
-MAX_ATR = 30.0
+MAX_ATR = 25.0  # v6.9: Changed from 30.0 to match Live/MQL5
 
 # Base Quality Thresholds
 BASE_QUALITY = 65
@@ -490,16 +488,26 @@ MONTHLY_RISK = {
     7: 1.0, 8: 0.75, 9: 0.9, 10: 0.6, 11: 0.75, 12: 0.8,
 }
 
-DAY_MULTIPLIERS = {0: 1.0, 1: 0.9, 2: 1.0, 3: 0.4, 4: 0.5, 5: 0.0, 6: 0.0}
+# v6.9: Updated Thu 0.8, Fri 0.3 to match Live/MQL5
+DAY_MULTIPLIERS = {0: 1.0, 1: 0.9, 2: 1.0, 3: 0.8, 4: 0.3, 5: 0.0, 6: 0.0}
 
+# v6.9: Hour 7, 11 = 0.0 (skip) to match Live/MQL5
 HOUR_MULTIPLIERS = {
     0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0,
-    6: 0.5, 7: 0.8, 8: 1.0, 9: 1.0, 10: 0.9, 11: 0.8,
+    6: 0.5, 7: 0.0, 8: 1.0, 9: 1.0, 10: 0.9, 11: 0.0,
     12: 0.7, 13: 1.0, 14: 1.0, 15: 1.0, 16: 0.9, 17: 0.7,
     18: 0.3, 19: 0.0, 20: 0.0, 21: 0.0, 22: 0.0, 23: 0.0,
 }
 
 ENTRY_MULTIPLIERS = {'MOMENTUM': 1.0, 'LOWER_HIGH': 1.0, 'ENGULF': 0.8}
+
+# ============================================================
+# v6.8 SESSION POI FILTER
+# Skip specific signal types at certain hours based on analysis
+# ============================================================
+SESSION_POI_FILTER_ENABLED = True
+SKIP_ORDER_BLOCK_HOURS = [8, 16]    # Skip Order Block entries at these hours
+SKIP_EMA_PULLBACK_HOURS = [13, 14]  # Skip EMA Pullback entries at these hours
 
 
 @dataclass
@@ -826,7 +834,7 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             feature_provider = None
 
     condition_stats = {'GOOD': 0, 'NORMAL': 0, 'BAD': 0, 'POOR_MONTH': 0, 'CAUTION': 0}
-    skip_stats = {'MONTH_STOPPED': 0, 'DAY_STOPPED': 0, 'DYNAMIC_ADJ': 0, 'PATTERN_STOPPED': 0}
+    skip_stats = {'MONTH_STOPPED': 0, 'DAY_STOPPED': 0, 'DYNAMIC_ADJ': 0, 'PATTERN_STOPPED': 0, 'SESSION_POI': 0}
 
     for i in range(100, len(df)):
         current_slice = df.iloc[:i+1]
@@ -898,9 +906,10 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             continue
 
         hour = current_time.hour
-        if not (7 <= hour <= 11 or 13 <= hour <= 17):
+        # v6.9: London 8-10, NY 13-17 (matching Live/MQL5)
+        if not (8 <= hour <= 10 or 13 <= hour <= 17):
             continue
-        session = "london" if 7 <= hour <= 11 else "newyork"
+        session = "london" if 8 <= hour <= 10 else "newyork"
 
         # LAYER 3: Check intra-month risk manager
         can_trade, intra_month_adj, skip_reason = risk_manager.new_trade_check(current_time)
@@ -921,7 +930,7 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
         if regime == Regime.SIDEWAYS:
             continue
 
-        # TRIPLE-LAYER QUALITY: Assess market condition
+        # QUAD-LAYER QUALITY: Assess market condition
         market_cond = assess_market_condition(df, col_map, i, atr_series, current_time)
 
         # Layer 1 + Layer 2 + Layer 3 (intra-month dynamic)
@@ -951,6 +960,11 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             has_trigger, entry_type = check_entry_trigger(current_bar, prev_bar, poi['direction'], col_map)
             if not has_trigger:
                 continue
+
+            # v6.8 SESSION POI FILTER: Skip Order Block at specific hours
+            if SESSION_POI_FILTER_ENABLED and hour in SKIP_ORDER_BLOCK_HOURS:
+                skip_stats['SESSION_POI'] += 1
+                continue  # Skip Order Block entries at hour 8 and 16
 
             risk_mult, should_skip = calculate_risk_multiplier(current_time, entry_type, poi['quality'])
             if should_skip:
@@ -1126,7 +1140,7 @@ async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats
             if image_path:
                 # Send image with caption
                 caption = (
-                    f"<b>SURGE-WSI v6.4 GBPUSD Backtest</b>\n"
+                    f"<b>SURGE-WSI v6.9 GBPUSD Backtest</b>\n"
                     f"Period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}\n\n"
                     f"{'✅' if stats['net_pnl'] >= 5000 else '❌'} Profit: ${stats['net_pnl']:+,.0f}\n"
                     f"{'✅' if stats['profit_factor'] >= 2.0 else '❌'} PF: {stats['profit_factor']:.2f}\n"
@@ -1151,7 +1165,7 @@ async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats
 
             # Fallback: Send text report
             msg = TelegramFormatter.tree_header("BACKTEST RESULTS", "📊")
-            msg += f"<b>H1 v6.4 GBPUSD - Triple-Layer Quality</b>\n"
+            msg += f"<b>H1 v6.9 GBPUSD - Quad-Layer Quality</b>\n"
             msg += f"Period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}\n\n"
 
             msg += TelegramFormatter.tree_section("Performance", TelegramFormatter.CHART)
@@ -1200,10 +1214,10 @@ async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats
 
 def print_results(stats: dict, trades: List[Trade], condition_stats: dict, skip_stats: dict = None):
     print(f"\n{'='*70}")
-    print(f"BACKTEST RESULTS - H1 v6.4 GBPUSD TRIPLE-LAYER QUALITY")
+    print(f"BACKTEST RESULTS - H1 v6.9 GBPUSD QUAD-LAYER QUALITY")
     print(f"{'='*70}")
 
-    print(f"\n[TRIPLE-LAYER QUALITY CONFIGURATION]")
+    print(f"\n[QUAD-LAYER QUALITY CONFIGURATION]")
     print(f"{'-'*50}")
     print(f"  Layer 1 - Monthly Profile (from market analysis):")
     print(f"    tradeable < 30%: +50 quality (NO TRADE)")
@@ -1239,6 +1253,7 @@ def print_results(stats: dict, trades: List[Trade], condition_stats: dict, skip_
         print(f"  Day stop: {skip_stats.get('DAY_STOPPED', 0)}")
         print(f"  Dynamic quality adj: {skip_stats.get('DYNAMIC_ADJ', 0)}")
         print(f"  Pattern filter stops: {skip_stats.get('PATTERN_STOPPED', 0)}")
+        print(f"  Session POI filter: {skip_stats.get('SESSION_POI', 0)}")
 
     print(f"\n[MARKET CONDITIONS OBSERVED]")
     print(f"{'-'*50}")
@@ -1332,9 +1347,9 @@ async def main():
     start = datetime(2025, 1, 1, tzinfo=timezone.utc)
     end = datetime(2026, 1, 31, tzinfo=timezone.utc)
 
-    print(f"SURGE-WSI H1 v6.4 GBPUSD - TRIPLE-LAYER QUALITY FILTER")
+    print(f"SURGE-WSI H1 v6.9 GBPUSD - QUAD-LAYER QUALITY FILTER")
     print(f"{'='*70}")
-    print(f"Triple-Layer Quality Filter:")
+    print(f"Quad-Layer Quality Filter:")
     print(f"  Layer 1: Monthly profile (from market analysis)")
     print(f"  Layer 2: Real-time technical indicators")
     print(f"  Layer 3: Intra-month dynamic risk (adaptive)")
@@ -1364,7 +1379,7 @@ async def main():
         elif 'close' in col_lower:
             col_map['close'] = col
 
-    print(f"\nRunning backtest with TRIPLE-LAYER quality filter...")
+    print(f"\nRunning backtest with QUAD-LAYER quality filter...")
     trades, max_dd, condition_stats, skip_stats = run_backtest(df, col_map)
 
     if not trades:
@@ -1396,7 +1411,7 @@ async def main():
         'monthly_adj': t.monthly_adj
     } for t in trades])
 
-    output_path = Path(__file__).parent.parent / "results" / "h1_v6_4_dual_filter_trades.csv"
+    output_path = Path(__file__).parent.parent / "results" / "h1_v6_9_quad_filter_trades.csv"
     trades_df.to_csv(output_path, index=False)
     print(f"\nTrades saved to: {output_path}")
 
