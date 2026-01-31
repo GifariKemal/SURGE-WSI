@@ -701,6 +701,110 @@ class MT5Connector:
             "retcode": result.retcode,
         }
 
+    def place_order_sync(
+        self,
+        symbol: str,
+        order_type: str,
+        volume: float,
+        sl: float = 0,
+        tp: float = 0,
+        comment: str = "SURGE-WSI",
+        magic: int = 20250125
+    ) -> Optional[Dict[str, Any]]:
+        """Synchronous version of place_market_order (for use without nested event loops)"""
+        if not self.ensure_connected():
+            return None
+
+        if not self.is_autotrading_enabled():
+            logger.error("AutoTrading is DISABLED in MT5 terminal.")
+            return None
+
+        tick = mt5.symbol_info_tick(symbol)
+        if tick is None:
+            logger.error(f"Failed to get tick for {symbol}")
+            return None
+
+        if order_type.upper() == "BUY":
+            price = tick.ask
+            mt5_type = mt5.ORDER_TYPE_BUY
+        else:
+            price = tick.bid
+            mt5_type = mt5.ORDER_TYPE_SELL
+
+        symbol_info = mt5.symbol_info(symbol)
+        if symbol_info is not None:
+            filling_mode = symbol_info.filling_mode
+            if filling_mode & 1:
+                filling_type = mt5.ORDER_FILLING_FOK
+            elif filling_mode & 2:
+                filling_type = mt5.ORDER_FILLING_IOC
+            else:
+                filling_type = mt5.ORDER_FILLING_RETURN
+        else:
+            filling_type = mt5.ORDER_FILLING_IOC
+
+        if len(comment) > 31:
+            comment = comment[:31]
+
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": symbol,
+            "volume": volume,
+            "type": mt5_type,
+            "price": price,
+            "deviation": 20,
+            "magic": magic,
+            "comment": comment,
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": filling_type,
+        }
+
+        if sl > 0:
+            request["sl"] = sl
+        if tp > 0:
+            request["tp"] = tp
+
+        filling_types = [filling_type]
+        for ft in [mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_RETURN]:
+            if ft not in filling_types:
+                filling_types.append(ft)
+
+        SUCCESS_RETCODES = {mt5.TRADE_RETCODE_DONE, 1}
+
+        result = None
+        for ft in filling_types:
+            request["type_filling"] = ft
+            result = mt5.order_send(request)
+
+            if result is None:
+                continue
+
+            if result.retcode in SUCCESS_RETCODES:
+                break
+
+            if result.retcode == 10027:
+                logger.error("AutoTrading is DISABLED in MT5.")
+                return None
+
+            if result.retcode not in (10030, 10033):
+                logger.error(f"Order failed: retcode={result.retcode}, comment='{result.comment}'")
+                return None
+
+        if result is None or result.retcode not in SUCCESS_RETCODES:
+            logger.error(f"Order failed all filling types")
+            return None
+
+        logger.info(f"Order placed: {order_type} {volume} {symbol} @ {result.price}")
+
+        return {
+            "ticket": result.order,
+            "volume": volume,
+            "price": price,
+            "symbol": symbol,
+            "type": order_type,
+            "retcode": result.retcode,
+        }
+
     async def modify_position(
         self,
         ticket: int,
@@ -756,6 +860,50 @@ class MT5Connector:
 
         logger.info(f"Position {ticket} modified: SL={sl}, TP={tp}")
         return True
+
+    def modify_position_sync(
+        self,
+        ticket: int,
+        sl: Optional[float] = None,
+        tp: Optional[float] = None
+    ) -> Dict:
+        """Synchronous version of modify_position
+
+        Args:
+            ticket: Position ticket
+            sl: New stop loss (None = no change)
+            tp: New take profit (None = no change)
+
+        Returns:
+            Dict with success status
+        """
+        if not self.ensure_connected():
+            return {'success': False, 'error': 'Not connected'}
+
+        # Get current position
+        positions = mt5.positions_get(ticket=ticket)
+        if not positions:
+            return {'success': False, 'error': f'Position {ticket} not found'}
+
+        position = positions[0]
+
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "symbol": position.symbol,
+            "position": ticket,
+            "sl": sl if sl is not None else position.sl,
+            "tp": tp if tp is not None else position.tp,
+        }
+
+        result = mt5.order_send(request)
+
+        if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+            error = mt5.last_error()
+            logger.error(f"Modify failed: {error}")
+            return {'success': False, 'error': str(error), 'retcode': result.retcode if result else None}
+
+        logger.debug(f"Position {ticket} modified: SL={sl}, TP={tp}")
+        return {'success': True, 'ticket': ticket, 'sl': sl, 'tp': tp}
 
     async def close_position(self, ticket: int) -> bool:
         """Close position by ticket
