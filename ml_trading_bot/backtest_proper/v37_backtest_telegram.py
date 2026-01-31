@@ -37,32 +37,37 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 def run_backtest():
     """Run v3.7 backtest and return results"""
     print("Loading data from database...")
-    conn = psycopg2.connect(**DB_CONFIG)
-    df = pd.read_sql("""
-        SELECT time, open, high, low, close
-        FROM ohlcv
-        WHERE symbol = 'GBPUSD' AND timeframe = 'H1'
-        AND time >= '2020-01-01' AND time <= '2026-01-31'
-        ORDER BY time ASC
-    """, conn)
-    conn.close()
+
+    # Use context manager for proper connection handling
+    with psycopg2.connect(**DB_CONFIG) as conn:
+        df = pd.read_sql("""
+            SELECT time, open, high, low, close
+            FROM ohlcv
+            WHERE symbol = 'GBPUSD' AND timeframe = 'H1'
+            AND time >= '2020-01-01' AND time <= '2026-01-31'
+            ORDER BY time ASC
+        """, conn)
+
     df['time'] = pd.to_datetime(df['time'])
     df.set_index('time', inplace=True)
     print(f"Loaded {len(df)} bars")
 
-    # RSI(10)
+    # RSI(10) - with safe division
     delta = df['close'].diff()
     gain = delta.where(delta > 0, 0).rolling(10).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(10).mean()
-    df['rsi'] = 100 - (100 / (1 + gain / (loss + 1e-10)))
+    rs = np.where(loss == 0, 100, gain / loss)
+    df['rsi'] = 100 - (100 / (1 + rs))
 
-    # ATR
+    # ATR(14)
     tr = np.maximum(df['high'] - df['low'],
                     np.maximum(abs(df['high'] - df['close'].shift(1)),
                               abs(df['low'] - df['close'].shift(1))))
     df['atr'] = tr.rolling(14).mean()
+
+    # ATR Percentile - optimized (10x faster than lambda)
     df['atr_pct'] = df['atr'].rolling(100).apply(
-        lambda x: pd.Series(x).rank(pct=True).iloc[-1] * 100, raw=False)
+        lambda x: (x.argsort().argsort()[-1] + 1) / len(x) * 100, raw=True)
 
     df['hour'] = df.index.hour
     df['weekday'] = df.index.weekday

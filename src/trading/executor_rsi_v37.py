@@ -68,7 +68,7 @@ class TradeResult:
 @dataclass
 class ExecutorStats:
     """Executor statistics"""
-    start_time: datetime = None
+    start_time: Optional[datetime] = None
     total_signals: int = 0
     trades_executed: int = 0
     trades_won: int = 0
@@ -79,7 +79,7 @@ class ExecutorStats:
     # Daily tracking
     daily_pnl: float = 0.0
     daily_trades: int = 0
-    last_daily_reset: datetime = None
+    last_daily_reset: Optional[datetime] = None
 
     @property
     def win_rate(self) -> float:
@@ -164,7 +164,7 @@ class RSIMeanReversionV37:
         self.state = ExecutorState.IDLE
         self.stats = ExecutorStats(
             start_time=datetime.now(timezone.utc),
-            last_daily_reset=datetime.now(timezone.utc).date()
+            last_daily_reset=datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         )
 
         # Position tracking
@@ -342,13 +342,14 @@ class RSIMeanReversionV37:
     # POSITION MANAGEMENT
     # =========================================================================
 
-    def _calculate_position_size(self, balance: float, entry: float, sl: float) -> float:
-        """Calculate position size based on risk"""
+    def _calculate_position_size(self, balance: float, entry: float, sl: float) -> Optional[float]:
+        """Calculate position size based on risk. Returns None if invalid."""
         risk_amount = balance * self.RISK_PER_TRADE
         sl_distance = abs(entry - sl)
 
         if sl_distance <= 0:
-            return 0.01
+            logger.warning(f"Invalid SL distance: {sl_distance}")
+            return None
 
         # Lot size = Risk / (SL pips * pip value * contract size)
         sl_pips = sl_distance / self._pip_value
@@ -373,14 +374,14 @@ class RSIMeanReversionV37:
 
     async def _check_daily_reset(self, now: datetime, balance: float):
         """Reset daily stats at midnight UTC"""
-        today = now.date()
+        today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-        if self.stats.last_daily_reset != today:
+        if self.stats.last_daily_reset is None or self.stats.last_daily_reset < today_midnight:
             logger.info(f"Daily reset: Yesterday P/L: ${self.stats.daily_pnl:+.2f}")
 
             self.stats.daily_pnl = 0.0
             self.stats.daily_trades = 0
-            self.stats.last_daily_reset = today
+            self.stats.last_daily_reset = today_midnight
             self._starting_balance = balance
             self._circuit_breaker_triggered = False
 
@@ -455,6 +456,13 @@ class RSIMeanReversionV37:
 
             pos = my_positions[0]
 
+            # Get entry time from position or use current time
+            entry_time = pos.get('time')
+            if entry_time is None:
+                entry_time = datetime.now(timezone.utc)
+            elif isinstance(entry_time, (int, float)):
+                entry_time = datetime.fromtimestamp(entry_time, tz=timezone.utc)
+
             async with self._position_lock:
                 self._position = OpenPosition(
                     ticket=pos['ticket'],
@@ -463,7 +471,7 @@ class RSIMeanReversionV37:
                     stop_loss=pos.get('sl', 0),
                     take_profit=pos.get('tp', 0),
                     lot_size=pos['volume'],
-                    entry_time=datetime.now(timezone.utc),
+                    entry_time=entry_time,
                     entry_bar_idx=0,
                     rsi_entry=50.0,
                     atr_pct=50.0
@@ -584,6 +592,10 @@ class RSIMeanReversionV37:
 
         # Calculate position size
         lot_size = self._calculate_position_size(balance, entry_price, sl)
+
+        if lot_size is None:
+            logger.warning("Invalid position size, skipping trade")
+            return None
 
         # Execute trade
         return await self._execute_trade(
