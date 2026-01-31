@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "SURGE-WSI"
 #property link      "https://github.com/surge-wsi"
-#property version   "6.90"
+#property version   "6.91"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -46,7 +46,8 @@ input bool     SkipEMA_Hour13 = true;       // Skip EMA Pullback Hour 13
 input bool     SkipEMA_Hour14 = true;       // Skip EMA Pullback Hour 14
 
 input group "=== Trading Hours (UTC) ==="
-input int      GMTOffset = 0;               // Broker GMT Offset (e.g., 7 for GMT+7)
+input bool     AutoDetectGMT = true;        // Auto-detect Broker GMT Offset
+input int      GMTOffset = 0;               // Manual GMT Offset (if AutoDetect=false)
 input int      LondonStart = 8;             // London Session Start (UTC)
 input int      LondonEnd = 10;              // London Session End (UTC)
 input int      NewYorkStart = 13;           // New York Session Start (UTC)
@@ -54,6 +55,9 @@ input int      NewYorkEnd = 17;             // New York Session End
 
 input group "=== Magic Number ==="
 input int      MagicNumber = 69001;         // EA Magic Number
+
+input group "=== Debug ==="
+input bool     DebugMode = false;           // Enable Debug Logging
 
 //+------------------------------------------------------------------+
 //| Global Variables                                                  |
@@ -70,6 +74,7 @@ int            adxHandle;
 
 double         pipSize;
 double         pipValue;
+int            detectedGMTOffset;  // Actual GMT offset to use
 
 // Day Multipliers (v6.9)
 // MQL5: Index 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
@@ -85,6 +90,64 @@ double HourMultipliers[24] = {
 };
 
 //+------------------------------------------------------------------+
+//| Check if running in Strategy Tester                               |
+//+------------------------------------------------------------------+
+bool IsBacktest()
+{
+   return MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION);
+}
+
+//+------------------------------------------------------------------+
+//| Detect broker GMT offset                                          |
+//+------------------------------------------------------------------+
+int DetectGMTOffset()
+{
+   // IMPORTANT: TimeGMT() may not work correctly in Strategy Tester
+   // In backtests, it often returns the same as TimeCurrent()
+   // So we need to handle this case
+
+   if(IsBacktest())
+   {
+      // In Strategy Tester, TimeGMT() is unreliable
+      // Most brokers use GMT+2 (or GMT+3 during DST)
+      // Default to GMT+2 which is common for European brokers
+      Print("WARNING: Running in Strategy Tester - GMT auto-detect may be inaccurate");
+      Print("RECOMMENDATION: Set AutoDetectGMT=false and manually configure GMTOffset");
+      Print("Common broker offsets: ICMarkets/Pepperstone=GMT+2/+3, XM=GMT+2/+3");
+
+      // Try to detect anyway, but use fallback if it returns 0
+      datetime gmtTime = TimeGMT();
+      datetime serverTime = TimeCurrent();
+      int diffSeconds = (int)(serverTime - gmtTime);
+      int diffHours = diffSeconds / 3600;
+
+      // If detection returns 0, assume GMT+2 (most common)
+      if(diffHours == 0)
+      {
+         Print("Auto-detect returned 0, using fallback GMT+2 (common for most brokers)");
+         return 2;
+      }
+      return diffHours;
+   }
+
+   // Live trading: TimeGMT() should work correctly
+   datetime gmtTime = TimeGMT();
+   datetime serverTime = TimeCurrent();
+
+   // Calculate difference in hours
+   int diffSeconds = (int)(serverTime - gmtTime);
+   int diffHours = diffSeconds / 3600;
+
+   // Round to nearest hour (handle small differences)
+   if(diffSeconds % 3600 > 1800)
+      diffHours += 1;
+   else if(diffSeconds % 3600 < -1800)
+      diffHours -= 1;
+
+   return diffHours;
+}
+
+//+------------------------------------------------------------------+
 //| Expert initialization function                                    |
 //+------------------------------------------------------------------+
 int OnInit()
@@ -93,6 +156,29 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(10);
    trade.SetTypeFilling(ORDER_FILLING_IOC);
+
+   // Detect or use manual GMT offset
+   if(AutoDetectGMT)
+   {
+      detectedGMTOffset = DetectGMTOffset();
+      Print("GMT Offset AUTO-DETECTED: GMT+", detectedGMTOffset);
+   }
+   else
+   {
+      detectedGMTOffset = GMTOffset;
+      Print("GMT Offset MANUAL: GMT+", detectedGMTOffset);
+   }
+
+   // Log important time info
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   int utcHour = dt.hour - detectedGMTOffset;
+   if(utcHour < 0) utcHour += 24;
+   if(utcHour >= 24) utcHour -= 24;
+
+   Print("Server Time: ", TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES),
+         " | UTC Hour: ", utcHour,
+         " | Day: ", EnumToString((ENUM_DAY_OF_WEEK)dt.day_of_week));
 
    // Calculate pip size and value
    pipSize = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
@@ -118,8 +204,10 @@ int OnInit()
       return INIT_FAILED;
    }
 
-   Print("GBPUSD H1 QuadLayer v6.9 initialized successfully");
+   Print("=== GBPUSD H1 QuadLayer v6.9 initialized ===");
    Print("Risk: ", RiskPercent, "% | Max Loss (SL_CAPPED): ", MaxLossPercent, "% | SL: ", SL_ATR_Mult, "x ATR | TP: ", TP_Ratio, ":1");
+   Print("Trading Hours (UTC): London ", LondonStart, "-", LondonEnd, " | NY ", NewYorkStart, "-", NewYorkEnd);
+   Print("Day Multipliers: Mon=1.0, Tue=0.9, Wed=1.0, Thu=0.8, Fri=0.3");
 
    return INIT_SUCCEEDED;
 }
@@ -156,29 +244,49 @@ void OnTick()
    MqlDateTime dt;
    TimeToStruct(TimeCurrent(), dt);
 
-   // Convert server hour to UTC hour
-   int utcHour = dt.hour - GMTOffset;
+   // Convert server hour to UTC hour using detected/configured offset
+   int utcHour = dt.hour - detectedGMTOffset;
    if(utcHour < 0) utcHour += 24;
    if(utcHour >= 24) utcHour -= 24;
 
    // Check day filter (skip weekends)
-   if(dt.day_of_week == 0 || dt.day_of_week == 6) return;
+   if(dt.day_of_week == 0 || dt.day_of_week == 6)
+   {
+      if(DebugMode) Print("DEBUG: Skipped - Weekend (Day=", dt.day_of_week, ")");
+      return;
+   }
 
    // Check day multiplier
    double dayMult = DayMultipliers[dt.day_of_week];
-   if(dayMult <= 0.0) return;
+   if(dayMult <= 0.0)
+   {
+      if(DebugMode) Print("DEBUG: Skipped - DayMult=0 (Day=", dt.day_of_week, ")");
+      return;
+   }
 
    // Check hour multiplier (using UTC hour)
    double hourMult = HourMultipliers[utcHour];
-   if(hourMult <= 0.0) return;
+   if(hourMult <= 0.0)
+   {
+      if(DebugMode) Print("DEBUG: Skipped - HourMult=0 (UTC Hour=", utcHour, ", Server Hour=", dt.hour, ")");
+      return;
+   }
 
    // Check if in kill zone (using UTC hour)
    bool inLondon = (utcHour >= LondonStart && utcHour <= LondonEnd);
    bool inNewYork = (utcHour >= NewYorkStart && utcHour <= NewYorkEnd);
-   if(!inLondon && !inNewYork) return;
+   if(!inLondon && !inNewYork)
+   {
+      if(DebugMode) Print("DEBUG: Skipped - Outside Kill Zone (UTC Hour=", utcHour, ", London=", LondonStart, "-", LondonEnd, ", NY=", NewYorkStart, "-", NewYorkEnd, ")");
+      return;
+   }
 
    // Skip Hour 11 if enabled (using UTC hour)
-   if(SkipHour11 && utcHour == 11) return;
+   if(SkipHour11 && utcHour == 11)
+   {
+      if(DebugMode) Print("DEBUG: Skipped - Hour 11 Filter");
+      return;
+   }
 
    // Get indicator values
    double atr[], emaFast[], emaSlow[], rsi[], adxMain[];
@@ -198,7 +306,11 @@ void OnTick()
    double atrPips = atr[1] / pipSize * 10;
 
    // Check ATR range
-   if(atrPips < MinATR_Pips || atrPips > MaxATR_Pips) return;
+   if(atrPips < MinATR_Pips || atrPips > MaxATR_Pips)
+   {
+      if(DebugMode) Print("DEBUG: Skipped - ATR out of range (ATR=", DoubleToString(atrPips, 1), ", Min=", MinATR_Pips, ", Max=", MaxATR_Pips, ")");
+      return;
+   }
 
    // Detect regime
    double close = iClose(_Symbol, PERIOD_H1, 1);
@@ -209,7 +321,11 @@ void OnTick()
    else if(close < emaFast[1] && emaFast[1] < emaSlow[1])
       regime = -1; // Bearish
 
-   if(regime == 0) return; // Skip sideways
+   if(regime == 0)
+   {
+      if(DebugMode) Print("DEBUG: Skipped - Sideways Regime (Close=", close, ", EMA20=", emaFast[1], ", EMA50=", emaSlow[1], ")");
+      return;
+   }
 
    // Check for entry signals
    int signal = 0;
@@ -225,14 +341,26 @@ void OnTick()
          // Session filter for Order Block (using UTC hour)
          if(UseSessionFilter)
          {
-            if(SkipOB_Hour8 && utcHour == 8) obSignal = 0;
-            if(SkipOB_Hour16 && utcHour == 16) obSignal = 0;
+            if(SkipOB_Hour8 && utcHour == 8)
+            {
+               if(DebugMode) Print("DEBUG: ORDER_BLOCK filtered by Session POI (Hour 8)");
+               obSignal = 0;
+            }
+            if(SkipOB_Hour16 && utcHour == 16)
+            {
+               if(DebugMode) Print("DEBUG: ORDER_BLOCK filtered by Session POI (Hour 16)");
+               obSignal = 0;
+            }
          }
 
          if(obSignal != 0 && ((obSignal > 0 && regime > 0) || (obSignal < 0 && regime < 0)))
          {
             signal = obSignal;
             signalType = "ORDER_BLOCK";
+         }
+         else if(obSignal != 0 && DebugMode)
+         {
+            Print("DEBUG: ORDER_BLOCK rejected - regime mismatch (signal=", obSignal, ", regime=", regime, ")");
          }
       }
    }
@@ -246,14 +374,26 @@ void OnTick()
          // Session filter for EMA Pullback (using UTC hour)
          if(UseSessionFilter)
          {
-            if(SkipEMA_Hour13 && utcHour == 13) emaSignal = 0;
-            if(SkipEMA_Hour14 && utcHour == 14) emaSignal = 0;
+            if(SkipEMA_Hour13 && utcHour == 13)
+            {
+               if(DebugMode) Print("DEBUG: EMA_PULLBACK filtered by Session POI (Hour 13)");
+               emaSignal = 0;
+            }
+            if(SkipEMA_Hour14 && utcHour == 14)
+            {
+               if(DebugMode) Print("DEBUG: EMA_PULLBACK filtered by Session POI (Hour 14)");
+               emaSignal = 0;
+            }
          }
 
          if(emaSignal != 0 && ((emaSignal > 0 && regime > 0) || (emaSignal < 0 && regime < 0)))
          {
             signal = emaSignal;
             signalType = "EMA_PULLBACK";
+         }
+         else if(emaSignal != 0 && DebugMode)
+         {
+            Print("DEBUG: EMA_PULLBACK rejected - regime mismatch (signal=", emaSignal, ", regime=", regime, ")");
          }
       }
    }
