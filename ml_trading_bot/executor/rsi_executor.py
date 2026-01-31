@@ -1,14 +1,15 @@
 """
-RSI Executor - Production Trading Bot (v3.6 OPTIMIZED)
+RSI Executor - Production Trading Bot (v3.7 OPTIMIZED)
 ======================================================
 
-Strategy: RSI Mean Reversion with Volatility Filter + Dynamic TP + Time-based TP + Max Holding
-Backtest: +572.9% over 6 years (6/6 profitable years)
+Strategy: RSI Mean Reversion with Volatility Filter + Dynamic TP + Time-based TP + Max Holding + Hour Skip
+Backtest: +618.2% over 6 years (MaxDD: 30.7%)
 
 Entry Rules:
 - BUY:  RSI(10) < 42 AND London+NY Session (07-22 UTC)
 - SELL: RSI(10) > 58 AND London+NY Session (07-22 UTC)
 - FILTER: ATR percentile 20-80 (skip extreme volatility)
+- FILTER: Skip 12:00 UTC (London lunch break - low liquidity)
 
 Exit Rules:
 - Stop Loss:   ATR(14) * 1.5
@@ -23,6 +24,10 @@ Risk Management:
 - 1% risk per trade
 - 2% max daily loss (circuit breaker)
 - 10% max drawdown (emergency stop)
+
+v3.7 Changes:
+- Added skip_hours filter (skip 12:00 UTC) -> +45.3% improvement, MaxDD 30.7%
+- London lunch break has reduced liquidity, worse signal quality
 
 v3.6 Changes:
 - Added 46-hour max holding period -> +48.9% improvement, lower drawdown (36.7%)
@@ -234,6 +239,8 @@ class RSIExecutor:
         time_tp_bonus_mult: float = 0.35,  # Add 0.35x ATR to TP during overlap
         # Max holding period (v3.6) - +48.9% improvement
         max_holding_hours: int = 46,    # Force close after 46 hours
+        # Skip hours filter (v3.7) - +45.3% improvement
+        skip_hours: list = None,        # Hours to skip (e.g., [12] for London lunch)
     ):
         """Initialize RSI Executor"""
         self.symbol = symbol
@@ -271,6 +278,9 @@ class RSIExecutor:
         # Max holding period (v3.6)
         self.max_holding_hours = max_holding_hours
 
+        # Skip hours filter (v3.7)
+        self.skip_hours = skip_hours if skip_hours else [12]  # Default: skip 12:00 UTC
+
         # Get pip value for symbol
         self.pip_value = PIP_VALUES.get(symbol, 0.0001)
         self.pip_value_usd = PIP_VALUE_USD.get(symbol, 10.0)
@@ -307,12 +317,13 @@ class RSIExecutor:
         # Callbacks
         self.send_telegram: Optional[Callable] = None
 
-        logger.info(f"RSIExecutor v3.6 initialized for {symbol}")
+        logger.info(f"RSIExecutor v3.7 initialized for {symbol}")
         logger.info(f"  RSI: period={rsi_period}, oversold={rsi_oversold}, overbought={rsi_overbought}")
         logger.info(f"  ATR: SL={sl_atr_mult}x, TP={tp_atr_mult}x (base)")
         logger.info(f"  Dynamic TP: {tp_low_vol_mult}x/<40pct, {tp_atr_mult}x/40-60pct, {tp_high_vol_mult}x/>60pct")
         logger.info(f"  Time TP: +{time_tp_bonus_mult}x during {time_tp_start}:00-{time_tp_end}:00 UTC (overlap)")
         logger.info(f"  Max holding: {max_holding_hours} hours (force close)")
+        logger.info(f"  Skip hours: {self.skip_hours} UTC (v3.7)")
         logger.info(f"  Session: {session_start}:00 - {session_end}:00 UTC")
         logger.info(f"  Volatility Filter: ATR percentile {min_atr_percentile:.0f}-{max_atr_percentile:.0f}")
         logger.info(f"  Pip value: {self.pip_value}, ${self.pip_value_usd}/pip/lot")
@@ -535,6 +546,11 @@ class RSIExecutor:
 
         if not self._check_session(now):
             signal.reason = f"Outside session ({self.session_start}:00-{self.session_end}:00 UTC)"
+            return signal
+
+        # Skip hours filter (v3.7) - avoid low-liquidity periods
+        if self.skip_hours and now.hour in self.skip_hours:
+            signal.reason = f"Skipped hour ({now.hour}:00 UTC - low liquidity)"
             return signal
 
         latest = self._h1_data.iloc[-1]

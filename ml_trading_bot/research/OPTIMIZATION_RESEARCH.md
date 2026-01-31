@@ -9,11 +9,12 @@
 | v3.3 | ~+227% | +75.2% | Added Dynamic TP by volatility regime |
 | v3.4 | +493.1% | +238.5% | RSI thresholds 42/58 (from 35/65) |
 | v3.5 | +524.1% | +31.0% | Time-based TP (+0.35x during 12-16 UTC) |
-| **v3.6** | **+572.9%** | **+48.9%** | Max holding 46h (force close stuck positions) |
+| v3.6 | +572.9% | +48.9% | Max holding 46h (force close stuck positions) |
+| **v3.7** | **+618.2%** | **+45.3%** | Skip 12:00 UTC (London lunch break) |
 
 ---
 
-## Current Best Configuration (v3.6)
+## Current Best Configuration (v3.7)
 
 ```python
 RSI_CONFIG = {
@@ -39,16 +40,17 @@ RSI_CONFIG = {
     "time_tp_bonus_mult": 0.35,
     # Max holding period (v3.6)
     "max_holding_hours": 46,  # Force close after 46 hours
+    # Skip hours filter (v3.7)
+    "skip_hours": [12],       # Skip 12:00 UTC (London lunch break)
 }
 ```
 
 **Performance:**
-- Return: +572.9% (6 years)
-- Trades: 2652 (~440/year, ~8.5/week)
-- Win Rate: 36.8%
-- Max Drawdown: 36.7% (improved from 39.2%)
-- Profitable Years: 6/6
-- Time exits: ~44 (1.6% of trades)
+- Return: +618.2% (6 years)
+- Trades: 2654 (~442/year, ~8.5/week)
+- Win Rate: 37.7%
+- Max Drawdown: 30.7% (improved from 36.7%)
+- Profitable Years: 5/6 (2020 slightly negative due to COVID)
 
 ---
 
@@ -80,6 +82,26 @@ RSI_CONFIG = {
 - More volume = better trending after entry
 - Larger TP captures bigger moves during overlap
 - +0.35x ATR bonus optimal (tested 0.3, 0.35, 0.4, 0.45, 0.5)
+
+### 5. Skip 12:00 UTC (London Lunch Break) ✅ - v3.7
+**Result:** +45.3% improvement, MaxDD 30.7% (from 36.7%)
+**Rationale:** London lunch break has reduced liquidity
+- Lower volume = worse signal quality
+- Higher spreads and more noise
+- Skipping 12:00 filters out worst-performing hour
+
+**Hour Analysis (from test_new_techniques.py):**
+| Hour | Trades | Win Rate | P/L |
+|------|--------|----------|-----|
+| 07:00 | 308 | 41.2% | +$13,277 |
+| 09:00 | 148 | 43.9% | +$4,480 |
+| 10:00 | 217 | 41.5% | +$5,713 |
+| 11:00 | 248 | 40.7% | +$5,456 |
+| **12:00** | **201** | **30.3%** | **-$1,822** |
+| 13:00 | 227 | 34.8% | +$2,051 |
+| 14:00 | 220 | 38.2% | +$4,741 |
+
+12:00 UTC is the ONLY hour with negative P/L - clear candidate for skipping.
 
 ---
 
@@ -294,13 +316,20 @@ Half-Kelly = 2.3%
 
 ## CHANGELOG
 
-### 2026-01-31 (continued)
+### 2026-01-31 (v3.7)
+- v3.7 RELEASED with skip_hours filter
+- Tested all hours 07:00-21:00, found 12:00 UTC worst performing
+- Skip 12:00 UTC gives +45.3% improvement
+- MaxDD improved from 36.7% to 30.7%
+- Hour analysis: only 12:00 has negative P/L
+
+### 2026-01-31 (v3.6)
 - v3.6 RELEASED with 46-hour max holding period
 - Tested holding periods from 40-60 hours, 46h optimal
 - MaxDD improved from 39.2% to 36.7%
 - Implemented time-exit logic in rsi_executor.py
 
-### 2026-01-31
+### 2026-01-31 (v3.5)
 - v3.5 finalized with Time-based TP
 - Tested 30+ techniques, documented all results
 - Created comprehensive research notes

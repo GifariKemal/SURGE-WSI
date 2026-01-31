@@ -1,11 +1,12 @@
 """
-RSI Trading Bot - Main Entry Point (v3.6 OPTIMIZED)
+RSI Trading Bot - Main Entry Point (v3.7 OPTIMIZED)
 ====================================================
 
 OPTIMIZED RSI Mean Reversion Strategy
-Backtest Result: +572.9% over 6 years (2020-2026)
-Profitable: 6/6 years | ~440 trades/year | WR 36.8% | MaxDD 36.7%
+Backtest Result: +618.2% over 6 years (2020-2026)
+WR 37.7% | MaxDD 30.7%
 
+v3.7: Skip 12:00 UTC (London lunch break) -> +45.3% improvement, MaxDD 30.7%
 v3.6: Max holding period (46h) -> +48.9% improvement, lower drawdown
 v3.5: Time-based TP (+0.35x during London+NY overlap) -> +31.0% improvement
 v3.4: RSI thresholds 42/58 -> +493.1% (optimal after extensive testing)
@@ -79,7 +80,7 @@ def get_mt5_config() -> dict:
 
 
 # ========================================================================
-# OPTIMIZED RSI PARAMETERS (v3.6)
+# OPTIMIZED RSI PARAMETERS (v3.7)
 # ========================================================================
 RSI_CONFIG = {
     "rsi_period": 10,
@@ -104,25 +105,28 @@ RSI_CONFIG = {
     "time_tp_bonus_mult": 0.35,  # Add 0.35x ATR to TP during overlap
     # Max holding period (v3.6) - force close stuck positions
     "max_holding_hours": 46,  # Close at market after 46 hours
+    # Skip hours filter (v3.7) - avoid low-liquidity periods
+    "skip_hours": [12],       # Skip 12:00 UTC (London lunch break)
 }
 
 
 def print_banner():
     print("""
 +==============================================================+
-|   RSI TRADING BOT v3.6 OPTIMIZED                             |
+|   RSI TRADING BOT v3.7 OPTIMIZED                             |
 |   ----------------------------------                         |
-|   Strategy:  RSI Mean Reversion + Dynamic TP + Time Exit     |
+|   Strategy:  RSI Mean Reversion + Dynamic TP + Hour Filter   |
 |   Symbol:    GBPUSD H1                                       |
-|   Backtest:  +572.9% (2020-2026) | 6/6 years | DD 36.7%      |
+|   Backtest:  +618.2% (2020-2026) | MaxDD 30.7%               |
 |                                                              |
 |   Entry:     RSI(10) < 42 (BUY) / > 58 (SELL)                |
 |   Filter:    ATR percentile 20-80 (skip extreme vol)         |
+|   Filter:    Skip 12:00 UTC (London lunch break) (v3.7)      |
 |   Exit:      SL: 1.5x ATR | Risk: 1% per trade               |
 |   Dynamic:   TP 2.4x(low vol) / 3.0x(med) / 3.6x(high vol)   |
 |   Time TP:   +0.35x during London+NY overlap (12-16 UTC)     |
-|   Max Hold:  Force close after 46 hours (v3.6)               |
-|   Session:   07:00 - 22:00 UTC                               |
+|   Max Hold:  Force close after 46 hours                      |
+|   Session:   07:00 - 22:00 UTC (excl. 12:00)                 |
 +==============================================================+
 """)
 
@@ -165,6 +169,8 @@ async def run_bot(paper_mode: bool = False):
         time_tp_bonus_mult=RSI_CONFIG["time_tp_bonus_mult"],
         # Max holding period (v3.6)
         max_holding_hours=RSI_CONFIG["max_holding_hours"],
+        # Skip hours filter (v3.7)
+        skip_hours=RSI_CONFIG["skip_hours"],
     )
 
     logger.info(f"Connecting to MT5: {mt5_config['server']}...")
