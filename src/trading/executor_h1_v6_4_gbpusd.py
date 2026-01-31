@@ -1,16 +1,18 @@
 """
-SURGE-WSI H1 v6.4 GBPUSD Live Trading Executor
+SURGE-WSI H1 v6.9 GBPUSD Live Trading Executor
 ==============================================
 
-QUAD-LAYER Quality Filter for ZERO losing months:
+QUAD-LAYER Quality Filter + Session Filter for ZERO losing months:
 - Layer 1: Monthly profile from market analysis (tradeable %)
 - Layer 2: Real-time technical indicators (ATR stability, efficiency, ADX)
 - Layer 3: Intra-month dynamic risk adjustment (consecutive losses, monthly P&L)
 - Layer 4: Pattern-Based Choppy Market Detector (rolling WR, direction tracking)
+- Session Filter (v6.8): Skip underperforming Hour+POI combinations
+- Day Multipliers Fix (v6.9): Thursday 0.4→0.8 (best day 51.8% WR), Friday 0.5→0.3 (worst day 33.8% WR)
 
-Backtest Results (Jan 2025 - Jan 2026):
-- 102 trades, 42.2% WR, PF 3.57
-- +$12,888.80 profit (+25.8% return on $50K)
+Backtest Results v6.9 (Jan 2025 - Jan 2026):
+- 150 trades, 50.0% WR, PF 5.84
+- +$36,205 profit (+72.4% return on $50K)
 - ZERO losing months (0/13)
 
 Author: SURIOTA Team
@@ -132,14 +134,52 @@ MONTHLY_RISK = {
     7: 1.0, 8: 0.75, 9: 0.9, 10: 0.6, 11: 0.75, 12: 0.8,
 }
 
-DAY_MULTIPLIERS = {0: 1.0, 1: 0.9, 2: 1.0, 3: 0.4, 4: 0.5, 5: 0.0, 6: 0.0}
+DAY_MULTIPLIERS = {0: 1.0, 1: 0.9, 2: 1.0, 3: 0.8, 4: 0.3, 5: 0.0, 6: 0.0}  # v6.9: Thu 0.4→0.8 (best day), Fri 0.5→0.3 (worst day)
 
 HOUR_MULTIPLIERS = {
     0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0,
-    6: 0.5, 7: 0.8, 8: 1.0, 9: 1.0, 10: 0.9, 11: 0.8,
+    6: 0.5, 7: 0.0, 8: 1.0, 9: 1.0, 10: 0.9, 11: 0.0,  # Hour 7 & 11 = 0% (v6.8: low WR)
     12: 0.7, 13: 1.0, 14: 1.0, 15: 1.0, 16: 0.9, 17: 0.7,
     18: 0.3, 19: 0.0, 20: 0.0, 21: 0.0, 22: 0.0, 23: 0.0,
 }
+
+# ============================================================
+# SESSION-BASED HOUR+POI FILTER (v6.8 - from Session Analysis)
+# Skip underperforming Hour+POI combinations
+# ============================================================
+USE_SESSION_POI_FILTER = True  # Enable session-based filtering
+
+# Hour 11: Skip entirely (27.3% WR - worst hour) - already in HOUR_MULTIPLIERS
+SKIP_HOURS = [11]
+
+# ORDER_BLOCK performs poorly at these hours
+SKIP_ORDER_BLOCK_HOURS = [8, 16]  # 8.3% and 14.3% WR
+
+# EMA_PULLBACK performs poorly during NY Overlap (for future use)
+SKIP_EMA_PULLBACK_HOURS = [13, 14]  # 18-28% WR
+
+
+def should_skip_by_session(hour: int, poi_type: str) -> tuple:
+    """
+    Check if trade should be skipped based on session analysis.
+    Returns (should_skip, reason)
+    """
+    if not USE_SESSION_POI_FILTER:
+        return False, ""
+
+    # Skip Hour 11 entirely (already handled by HOUR_MULTIPLIERS but double-check)
+    if hour in SKIP_HOURS:
+        return True, f"HOUR_{hour}_SKIP"
+
+    # Skip ORDER_BLOCK at problematic hours
+    if poi_type == "ORDER_BLOCK" and hour in SKIP_ORDER_BLOCK_HOURS:
+        return True, f"OB_HOUR_{hour}_SKIP"
+
+    # Skip EMA_PULLBACK during NY Overlap
+    if poi_type == "EMA_PULLBACK" and hour in SKIP_EMA_PULLBACK_HOURS:
+        return True, f"EMA_HOUR_{hour}_SKIP"
+
+    return False, ""
 
 ENTRY_MULTIPLIERS = {'MOMENTUM': 1.0, 'LOWER_HIGH': 1.0, 'ENGULF': 0.8}
 
@@ -179,6 +219,7 @@ class TradeSignal:
     monthly_adj: int
     pattern_size_mult: float = 1.0
     pattern_status: str = "OK"
+    poi_type: str = "ORDER_BLOCK"  # v6.8: POI type for session filter
 
 
 class IntraMonthRiskManager:
@@ -837,7 +878,8 @@ class H1V64GBPUSDExecutor:
     def is_kill_zone(self, dt: datetime) -> Tuple[bool, str]:
         """Check if current time is in kill zone"""
         hour = dt.hour
-        if 7 <= hour <= 11:
+        # v6.8: Skip Hour 7 (0% WR) and Hour 11 (27.3% WR)
+        if hour in [8, 9, 10]:  # London kill zone (skip 7, 11)
             return True, "london"
         elif 13 <= hour <= 17:
             return True, "newyork"
@@ -931,6 +973,13 @@ class H1V64GBPUSDExecutor:
             if poi['direction'] == 'SELL' and regime != Regime.BEARISH:
                 continue
 
+            # v6.8: SESSION-BASED HOUR+POI FILTER
+            poi_type = poi.get('type', 'ORDER_BLOCK')
+            session_skip, session_reason = should_skip_by_session(now.hour, poi_type)
+            if session_skip:
+                logger.debug(f"[Session] Trade blocked: {session_reason}")
+                continue
+
             # Check zone proximity
             zone_size = abs(current_bar[col_map['high']] - current_bar[col_map['low']]) * 2
             if abs(current_price - poi['price']) > zone_size:
@@ -990,7 +1039,8 @@ class H1V64GBPUSDExecutor:
                 quality_threshold=effective_quality,
                 monthly_adj=market_cond.monthly_adjustment + intra_month_adj,
                 pattern_size_mult=pattern_size_mult,
-                pattern_status=pattern_reason
+                pattern_status=pattern_reason,
+                poi_type=poi_type  # v6.8: POI type for session filter tracking
             )
 
         return None

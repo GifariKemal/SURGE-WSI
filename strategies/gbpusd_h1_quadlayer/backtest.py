@@ -54,13 +54,25 @@ from src.utils.telegram import TelegramNotifier, TelegramFormatter
 from gbpusd_h1_quadlayer.trading_filters import (
     IntraMonthRiskManager,
     PatternBasedFilter,
-    ChoppinessFilter,
+    ChoppinessFilter,  # DEPRECATED but kept for backwards compatibility
     calculate_choppiness_index,
-    DirectionalMomentumFilter,
+    DirectionalMomentumFilter,  # DEPRECATED but kept for backwards compatibility
+    H4BiasFilter,  # NEW in v6.8 - Multi-Timeframe Bias Filter
+    H4Bias,
+    get_h4_bias,
+    MarketStructureFilter,  # NEW in v6.9 - BOS/CHoCH detection
+    StructureType,
+    StructureSignal,
+    detect_swing_points,
+    detect_market_structure,
+    STRUCTURE_SWING_LOOKBACK,
+    STRUCTURE_BOS_CONFIDENCE,
+    STRUCTURE_CHOCH_CONFIDENCE,
     calculate_lot_size,
     calculate_sl_tp,
     get_monthly_quality_adjustment,
     MONTHLY_TRADEABLE_PCT,
+    SEASONAL_TEMPLATE,
     WARMUP_TRADES,
     ROLLING_WINDOW,
     ROLLING_WR_HALT,
@@ -81,6 +93,16 @@ from gbpusd_h1_quadlayer.strategy_config import (
     SYMBOL, PIP_SIZE, PIP_VALUE,
     RISK, TECHNICAL, INTRA_MONTH, PATTERN,
     MONTHLY_RISK_MULT,
+)
+# Import FVG filter
+from gbpusd_h1_quadlayer.fvg_filter import (
+    FVGZone,
+    detect_fvg,
+    check_fvg_confirmation,
+    FVG_LOOKBACK,
+    FVG_MIN_GAP_PIPS,
+    FVG_MAX_AGE,
+    FVG_CONFIRMATION_PIPS,
 )
 
 # Optional vector database integration
@@ -108,9 +130,25 @@ VECTOR_SYNC_ON_START = False  # Sync to Qdrant at backtest start
 SEND_TO_TELEGRAM = True  # Set False to disable Telegram notifications
 
 # ============================================================
+# PARTIAL TAKE PROFIT & TRAILING STOP CONFIG
+# ============================================================
+USE_PARTIAL_TP = False          # DISABLED for v6.8 session filter test
+PARTIAL_TP_PERCENT = 0.5        # Close 50% at first TP
+PARTIAL_TP_RR = 1.5             # First TP at 1.5:1 RR
+MOVE_SL_TO_BE = True            # Move SL to breakeven after partial TP
+USE_TRAILING_STOP = False       # DISABLED for v6.8 session filter test
+TRAIL_ATR_MULT = 1.0            # Trail at 1x ATR distance
+
+# ============================================================
 # LAYER 4 PATTERN FILTER CONFIG
 # ============================================================
 USE_PATTERN_FILTER = True  # Enable Layer 4 Pattern Filter
+
+# ============================================================
+# ENTRY SIGNAL CONFIG
+# ============================================================
+USE_ORDER_BLOCK = True       # Primary entry: Order Block detection
+USE_EMA_PULLBACK = True      # Secondary entry: EMA Pullback (v6.7)
 
 # ============================================================
 # LAYER 5 CHOPPINESS INDEX FILTER CONFIG (DEPRECATED)
@@ -119,10 +157,69 @@ USE_PATTERN_FILTER = True  # Enable Layer 4 Pattern Filter
 USE_CHOPPINESS_FILTER = False  # DISABLED - use DirectionalMomentumFilter instead
 
 # ============================================================
+# FAIR VALUE GAP (FVG) FILTER CONFIG
+# FVG = price imbalance from impulsive moves
+# Config values imported from fvg_filter.py module
+# ============================================================
+USE_FVG_FILTER = False         # DISABLED - did not improve results
+
+# ============================================================
 # LAYER 6 DIRECTIONAL MOMENTUM FILTER CONFIG
 # Detects when one direction is consistently failing
 # ============================================================
 USE_DIRECTIONAL_FILTER = False  # Disabled - ADX regime detection is primary
+
+# ============================================================
+# LAYER 7: H4 MULTI-TIMEFRAME BIAS FILTER (NEW in v6.8)
+# Uses H4 EMA20/EMA50 crossover to filter H1 entries
+# Only allows trades aligned with higher timeframe trend
+# ============================================================
+USE_H4_BIAS = False  # DISABLED - added losing month
+
+# ============================================================
+# LAYER 8: MARKET STRUCTURE FILTER (NEW in v6.9)
+# BOS (Break of Structure) and CHoCH (Change of Character)
+# Only allows trades after BOS confirmation or CHoCH reversal
+# ============================================================
+USE_STRUCTURE_FILTER = False  # DISABLED - reduced profit
+
+# ============================================================
+# SESSION-BASED HOUR+POI FILTER (v6.8 - Based on Session Analysis)
+# Skip underperforming Hour+POI combinations
+# ============================================================
+USE_SESSION_POI_FILTER = True  # NEW: Enable session-based filtering
+
+# Hour 11: Skip entirely (27.3% WR - worst hour)
+SKIP_HOURS = [11]
+
+# ORDER_BLOCK performs poorly at these hours
+SKIP_ORDER_BLOCK_HOURS = [8, 16]  # 8.3% and 14.3% WR
+
+# EMA_PULLBACK performs poorly during NY Overlap
+SKIP_EMA_PULLBACK_HOURS = [13, 14]  # 18-28% WR
+
+
+def should_skip_by_session(hour: int, poi_type: str) -> tuple[bool, str]:
+    """
+    Check if trade should be skipped based on session analysis.
+    Returns (should_skip, reason)
+    """
+    if not USE_SESSION_POI_FILTER:
+        return False, ""
+
+    # Skip Hour 11 entirely
+    if hour in SKIP_HOURS:
+        return True, f"HOUR_{hour}_SKIP"
+
+    # Skip ORDER_BLOCK at problematic hours
+    if poi_type == "ORDER_BLOCK" and hour in SKIP_ORDER_BLOCK_HOURS:
+        return True, f"OB_HOUR_{hour}_SKIP"
+
+    # Skip EMA_PULLBACK during NY Overlap
+    if poi_type == "EMA_PULLBACK" and hour in SKIP_EMA_PULLBACK_HOURS:
+        return True, f"EMA_HOUR_{hour}_SKIP"
+
+    return False, ""
 
 
 # ============================================================
@@ -171,11 +268,11 @@ MONTHLY_RISK = {
     7: 1.0, 8: 0.75, 9: 0.9, 10: 0.6, 11: 0.75, 12: 0.8,
 }
 
-DAY_MULTIPLIERS = {0: 1.0, 1: 0.9, 2: 1.0, 3: 0.4, 4: 0.5, 5: 0.0, 6: 0.0}
+DAY_MULTIPLIERS = {0: 1.0, 1: 0.9, 2: 1.0, 3: 0.8, 4: 0.3, 5: 0.0, 6: 0.0}  # v6.9: Thu 0.4→0.8 (best day), Fri 0.5→0.3 (worst day)
 
 HOUR_MULTIPLIERS = {
     0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0,
-    6: 0.5, 7: 0.8, 8: 1.0, 9: 1.0, 10: 0.9, 11: 0.8,
+    6: 0.5, 7: 0.0, 8: 1.0, 9: 1.0, 10: 0.9, 11: 0.0,  # Hour 7 & 11 = 0% (v6.8: skip due to low WR)
     12: 0.7, 13: 1.0, 14: 1.0, 15: 1.0, 16: 0.9, 17: 0.7,
     18: 0.3, 19: 0.0, 20: 0.0, 21: 0.0, 22: 0.0, 23: 0.0,
 }
@@ -199,11 +296,27 @@ class Trade:
     pnl_pips: float = 0.0
     exit_reason: str = ""
     quality_score: float = 0.0
-    entry_type: str = ""
+    entry_type: str = ""  # MOMENTUM, ENGULF, LOWER_HIGH
+    poi_type: str = ""    # ORDER_BLOCK or EMA_PULLBACK (v6.7)
     session: str = ""
     dynamic_quality: float = 0.0
     market_condition: str = ""
     monthly_adj: int = 0
+    # Partial TP & Trailing Stop fields
+    partial_closed: bool = False      # Has partial TP been taken?
+    partial_pnl: float = 0.0          # P/L from partial close
+    trailing_stop: float = 0.0        # Current trailing stop price
+    original_lot_size: float = 0.0    # Original lot size before partial close
+    partial_tp_price: float = 0.0     # Partial TP target price
+    # H4 Bias fields (v6.8)
+    h4_bias: str = ""                 # H4 bias at entry time (BULLISH, BEARISH, SIDEWAYS)
+    h4_aligned: bool = True           # Was trade aligned with H4 bias?
+    # FVG fields (v6.9)
+    fvg_confirmed: bool = False       # Was trade confirmed by FVG zone?
+    fvg_gap_pips: float = 0.0         # Size of confirming FVG gap in pips
+    # Market Structure fields (v6.9)
+    structure_type: str = ""          # BOS_BULLISH, BOS_BEARISH, CHOCH_BULLISH, CHOCH_BEARISH
+    structure_confidence: float = 0.0 # Confidence of structure signal (0-1)
 
 
 class Regime(Enum):
@@ -417,7 +530,7 @@ def detect_order_blocks(df: pd.DataFrame, col_map: dict, min_quality: float) -> 
                 if next1[c] > next1[o] and body_ratio > 0.55 and next1[c] > current[h]:
                     quality = body_ratio * 100
                     if quality >= min_quality:
-                        pois.append({'price': current[l], 'direction': 'BUY', 'quality': quality, 'idx': i})
+                        pois.append({'price': current[l], 'direction': 'BUY', 'quality': quality, 'idx': i, 'type': 'ORDER_BLOCK'})
 
         is_bullish = current[c] > current[o]
         if is_bullish:
@@ -428,7 +541,166 @@ def detect_order_blocks(df: pd.DataFrame, col_map: dict, min_quality: float) -> 
                 if next1[c] < next1[o] and body_ratio > 0.55 and next1[c] < current[l]:
                     quality = body_ratio * 100
                     if quality >= min_quality:
-                        pois.append({'price': current[h], 'direction': 'SELL', 'quality': quality, 'idx': i})
+                        pois.append({'price': current[h], 'direction': 'SELL', 'quality': quality, 'idx': i, 'type': 'ORDER_BLOCK'})
+    return pois
+
+
+def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """Calculate Relative Strength Index"""
+    delta = series.diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = (-delta).where(delta < 0, 0.0)
+    avg_gain = gain.rolling(window=period).mean()
+    avg_loss = loss.rolling(window=period).mean()
+    rs = avg_gain / (avg_loss + 1e-10)
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+
+def calculate_adx(df: pd.DataFrame, col_map: dict, period: int = 14) -> pd.Series:
+    """Calculate Average Directional Index"""
+    h, l, c = col_map['high'], col_map['low'], col_map['close']
+    highs = df[h]
+    lows = df[l]
+    closes = df[c]
+
+    plus_dm = (highs - highs.shift(1)).clip(lower=0)
+    minus_dm = (lows.shift(1) - lows).clip(lower=0)
+
+    tr = pd.concat([
+        highs - lows,
+        abs(highs - closes.shift(1)),
+        abs(lows - closes.shift(1))
+    ], axis=1).max(axis=1)
+
+    atr_14 = tr.rolling(period).mean()
+    plus_di = 100 * (plus_dm.rolling(period).mean() / (atr_14 + 1e-10))
+    minus_di = 100 * (minus_dm.rolling(period).mean() / (atr_14 + 1e-10))
+
+    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di + 1e-10)
+    adx = dx.rolling(period).mean()
+    return adx
+
+
+def detect_ema_pullback(df: pd.DataFrame, col_map: dict, atr_series: pd.Series,
+                        min_quality: float) -> List[dict]:
+    """
+    Detect EMA Pullback entry signals (v6.7)
+
+    Relaxed criteria to capture more quality signals:
+    - BUY: close > EMA20 > EMA50 (uptrend), price near EMA20, bullish candle
+    - SELL: close < EMA20 < EMA50 (downtrend), price near EMA20, bearish candle
+    - ADX > 20 (trend present)
+    - RSI between 30-70 (room for momentum)
+    - Body ratio > 0.4 (decent candle)
+    - ATR between MIN_ATR-MAX_ATR
+    """
+    pois = []
+    if len(df) < 50:
+        return pois
+
+    o, h, l, c = col_map['open'], col_map['high'], col_map['low'], col_map['close']
+
+    # Calculate indicators
+    ema20 = calculate_ema(df[c], 20)
+    ema50 = calculate_ema(df[c], 50)
+    rsi = calculate_rsi(df[c], 14)
+    adx = calculate_adx(df, col_map, 14)
+
+    # Check current bar (last bar)
+    i = len(df) - 1
+    bar = df.iloc[i]
+
+    current_close = bar[c]
+    current_open = bar[o]
+    current_high = bar[h]
+    current_low = bar[l]
+    current_ema20 = ema20.iloc[i]
+    current_ema50 = ema50.iloc[i]
+    current_rsi = rsi.iloc[i]
+    current_adx = adx.iloc[i]
+    current_atr = atr_series.iloc[i] if i < len(atr_series) else 0
+
+    # Skip if indicators are NaN
+    if pd.isna(current_ema20) or pd.isna(current_ema50) or pd.isna(current_rsi) or pd.isna(current_adx):
+        return pois
+
+    # Calculate body ratio
+    total_range = current_high - current_low
+    if total_range < 0.0003:  # Minimum range
+        return pois
+    body = abs(current_close - current_open)
+    body_ratio = body / total_range
+
+    # Relaxed filter criteria (v6.7)
+    if body_ratio < 0.4:  # Need decent body
+        return pois
+    if current_adx < 20:  # Need trend present
+        return pois
+    if not (30 <= current_rsi <= 70):  # Room for momentum
+        return pois
+    if current_atr < MIN_ATR or current_atr > MAX_ATR:  # ATR within range
+        return pois
+
+    # EMA20 proximity tolerance - wider to capture more pullbacks
+    # Use ATR-based distance: within 1.5 ATR of EMA20
+    atr_distance = current_atr * PIP_SIZE * 1.5  # 1.5 ATR in price
+
+    # BUY: Uptrend pullback
+    is_bullish = current_close > current_open
+    if is_bullish and current_close > current_ema20 > current_ema50:
+        # Price touched or was within 1.5 ATR of EMA20
+        distance_to_ema = current_low - current_ema20
+        if distance_to_ema <= atr_distance:
+            # Quality based on multiple factors
+            # Better quality for: closer touch, higher ADX, middle RSI
+            touch_quality = max(0, 30 - (distance_to_ema / PIP_SIZE))  # 0-30 points
+            adx_quality = min(25, (current_adx - 15) * 1.5)  # 0-25 points
+            rsi_quality = min(25, abs(50 - current_rsi) < 20 and 25 or 15)  # 15-25 points
+            body_quality = min(20, body_ratio * 30)  # 0-20 points
+
+            quality = touch_quality + adx_quality + rsi_quality + body_quality
+            quality = min(100, max(55, quality))  # Clamp between 55-100
+
+            if quality >= min_quality:
+                pois.append({
+                    'price': current_close,
+                    'direction': 'BUY',
+                    'quality': quality,
+                    'idx': i,
+                    'type': 'EMA_PULLBACK',
+                    'adx': current_adx,
+                    'rsi': current_rsi,
+                    'body_ratio': body_ratio
+                })
+
+    # SELL: Downtrend pullback
+    is_bearish = current_close < current_open
+    if is_bearish and current_close < current_ema20 < current_ema50:
+        # Price touched or was within 1.5 ATR of EMA20
+        distance_to_ema = current_ema20 - current_high
+        if distance_to_ema <= atr_distance:
+            # Quality based on multiple factors
+            touch_quality = max(0, 30 - (distance_to_ema / PIP_SIZE))  # 0-30 points
+            adx_quality = min(25, (current_adx - 15) * 1.5)  # 0-25 points
+            rsi_quality = min(25, abs(50 - current_rsi) < 20 and 25 or 15)  # 15-25 points
+            body_quality = min(20, body_ratio * 30)  # 0-20 points
+
+            quality = touch_quality + adx_quality + rsi_quality + body_quality
+            quality = min(100, max(55, quality))  # Clamp between 55-100
+
+            if quality >= min_quality:
+                pois.append({
+                    'price': current_close,
+                    'direction': 'SELL',
+                    'quality': quality,
+                    'idx': i,
+                    'type': 'EMA_PULLBACK',
+                    'adx': current_adx,
+                    'rsi': current_rsi,
+                    'body_ratio': body_ratio
+                })
+
     return pois
 
 
@@ -504,6 +776,12 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
     # Layer 6: Directional Momentum filter (NEW!)
     directional_filter = DirectionalMomentumFilter() if USE_DIRECTIONAL_FILTER else None
 
+    # Layer 7: H4 Multi-Timeframe Bias Filter (v6.8)
+    h4_bias_filter = H4BiasFilter() if USE_H4_BIAS else None
+
+    # Layer 8: Market Structure Filter (v6.9) - BOS/CHoCH detection
+    structure_filter = MarketStructureFilter() if USE_STRUCTURE_FILTER else None
+
     # Vector feature provider for fast cached feature access
     feature_provider = None
     if USE_VECTOR_FEATURES and VECTOR_AVAILABLE and CachedFeatureProvider is not None:
@@ -519,7 +797,10 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             feature_provider = None
 
     condition_stats = {'GOOD': 0, 'NORMAL': 0, 'BAD': 0, 'POOR_MONTH': 0, 'CAUTION': 0}
-    skip_stats = {'MONTH_STOPPED': 0, 'DAY_STOPPED': 0, 'DYNAMIC_ADJ': 0, 'PATTERN_STOPPED': 0, 'CHOP_ADJUSTED': 0, 'DIR_ADJUSTED': 0}
+    skip_stats = {'MONTH_STOPPED': 0, 'DAY_STOPPED': 0, 'DYNAMIC_ADJ': 0, 'PATTERN_STOPPED': 0, 'CHOP_ADJUSTED': 0, 'DIR_ADJUSTED': 0, 'H4_BLOCKED': 0, 'STRUCTURE_BLOCKED': 0}
+    entry_stats = {'ORDER_BLOCK': 0, 'EMA_PULLBACK': 0}  # Track entry types
+    h4_stats = {'aligned': 0, 'contrary_blocked': 0, 'sideways_blocked': 0}  # H4 bias tracking
+    structure_stats = {'bos_bullish': 0, 'bos_bearish': 0, 'choch_bullish': 0, 'choch_bearish': 0, 'no_structure': 0, 'blocked': 0, 'aligned': 0}  # Structure tracking
 
     for i in range(100, len(df)):
         current_slice = df.iloc[:i+1]
@@ -543,17 +824,88 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             exit_price = None
             exit_reason = ""
 
+            # ============================================================
+            # PARTIAL TP & TRAILING STOP LOGIC
+            # ============================================================
+            if USE_PARTIAL_TP and not position.partial_closed:
+                # Check if partial TP level is hit
+                if position.direction == 'BUY':
+                    if high >= position.partial_tp_price:
+                        # Partial TP hit for BUY
+                        partial_exit_price = position.partial_tp_price
+                        partial_pips = (partial_exit_price - position.entry_price) / PIP_SIZE
+                        partial_lot = position.original_lot_size * PARTIAL_TP_PERCENT
+                        position.partial_pnl = partial_pips * partial_lot * PIP_VALUE
+                        position.partial_closed = True
+                        position.lot_size = position.original_lot_size * (1 - PARTIAL_TP_PERCENT)
+
+                        # Move SL to breakeven if enabled
+                        if MOVE_SL_TO_BE:
+                            position.sl_price = position.entry_price
+
+                        # Initialize trailing stop at current ATR distance below price
+                        if USE_TRAILING_STOP:
+                            trail_distance = current_atr * TRAIL_ATR_MULT * PIP_SIZE
+                            position.trailing_stop = partial_exit_price - trail_distance
+                else:
+                    if low <= position.partial_tp_price:
+                        # Partial TP hit for SELL
+                        partial_exit_price = position.partial_tp_price
+                        partial_pips = (position.entry_price - partial_exit_price) / PIP_SIZE
+                        partial_lot = position.original_lot_size * PARTIAL_TP_PERCENT
+                        position.partial_pnl = partial_pips * partial_lot * PIP_VALUE
+                        position.partial_closed = True
+                        position.lot_size = position.original_lot_size * (1 - PARTIAL_TP_PERCENT)
+
+                        # Move SL to breakeven if enabled
+                        if MOVE_SL_TO_BE:
+                            position.sl_price = position.entry_price
+
+                        # Initialize trailing stop at current ATR distance above price
+                        if USE_TRAILING_STOP:
+                            trail_distance = current_atr * TRAIL_ATR_MULT * PIP_SIZE
+                            position.trailing_stop = partial_exit_price + trail_distance
+
+            # Update trailing stop if enabled and partial TP was taken
+            if USE_TRAILING_STOP and position.partial_closed and position.trailing_stop > 0:
+                trail_distance = current_atr * TRAIL_ATR_MULT * PIP_SIZE
+                if position.direction == 'BUY':
+                    # For BUY: trail stop below price, only moves up
+                    new_trail = high - trail_distance
+                    if new_trail > position.trailing_stop:
+                        position.trailing_stop = new_trail
+                    # Use trailing stop instead of original SL
+                    position.sl_price = max(position.sl_price, position.trailing_stop)
+                else:
+                    # For SELL: trail stop above price, only moves down
+                    new_trail = low + trail_distance
+                    if new_trail < position.trailing_stop:
+                        position.trailing_stop = new_trail
+                    # Use trailing stop instead of original SL
+                    position.sl_price = min(position.sl_price, position.trailing_stop)
+
+            # Check exit conditions (SL/TP)
             if position.direction == 'BUY':
                 if low <= position.sl_price:
                     exit_price = position.sl_price
-                    exit_reason = "SL"
+                    if position.partial_closed and USE_TRAILING_STOP:
+                        exit_reason = "TRAIL_SL" if position.sl_price >= position.entry_price else "SL"
+                    elif position.partial_closed:
+                        exit_reason = "BE_SL"
+                    else:
+                        exit_reason = "SL"
                 elif high >= position.tp_price:
                     exit_price = position.tp_price
                     exit_reason = "TP"
             else:
                 if high >= position.sl_price:
                     exit_price = position.sl_price
-                    exit_reason = "SL"
+                    if position.partial_closed and USE_TRAILING_STOP:
+                        exit_reason = "TRAIL_SL" if position.sl_price <= position.entry_price else "SL"
+                    elif position.partial_closed:
+                        exit_reason = "BE_SL"
+                    else:
+                        exit_reason = "SL"
                 elif low <= position.tp_price:
                     exit_price = position.tp_price
                     exit_reason = "TP"
@@ -563,29 +915,36 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
                     pips = (exit_price - position.entry_price) / PIP_SIZE
                 else:
                     pips = (position.entry_price - exit_price) / PIP_SIZE
-                pnl = pips * position.lot_size * PIP_VALUE
+
+                # Calculate PnL for remaining position
+                remaining_pnl = pips * position.lot_size * PIP_VALUE
                 max_loss = balance * (MAX_LOSS_PER_TRADE_PCT / 100)
-                if pnl < 0 and abs(pnl) > max_loss:
-                    pnl = -max_loss
+
+                # Total PnL = partial PnL + remaining position PnL
+                total_pnl = position.partial_pnl + remaining_pnl
+
+                if total_pnl < 0 and abs(total_pnl) > max_loss:
+                    total_pnl = -max_loss
                     exit_reason = "SL_CAPPED"
+
                 position.exit_time = current_time
                 position.exit_price = exit_price
-                position.pnl = pnl
+                position.pnl = total_pnl
                 position.pnl_pips = pips
                 position.exit_reason = exit_reason
-                balance += pnl
+                balance += total_pnl
                 trades.append(position)
 
                 # Layer 3: Record trade for intra-month tracking
-                risk_manager.record_trade(pnl, current_time)
+                risk_manager.record_trade(total_pnl, current_time)
 
                 # Layer 4: Record trade for pattern filter (if enabled)
                 if USE_PATTERN_FILTER:
-                    pattern_filter.record_trade(position.direction, pnl, current_time)
+                    pattern_filter.record_trade(position.direction, total_pnl, current_time)
 
                 # Layer 6: Record trade for directional filter (if enabled)
                 if USE_DIRECTIONAL_FILTER and directional_filter:
-                    directional_filter.record_trade(position.direction, pnl, current_time)
+                    directional_filter.record_trade(position.direction, total_pnl, current_time)
 
                 position = None
             continue
@@ -596,9 +955,10 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             continue
 
         hour = current_time.hour
-        if not (7 <= hour <= 11 or 13 <= hour <= 17):
+        # v6.6.1: Skip hour 7 (0% WR in backtest)
+        if not (8 <= hour <= 11 or 13 <= hour <= 17):
             continue
-        session = "london" if 7 <= hour <= 11 else "newyork"
+        session = "london" if 8 <= hour <= 11 else "newyork"
 
         # LAYER 3: Check intra-month risk manager
         can_trade, intra_month_adj, skip_reason = risk_manager.new_trade_check(current_time)
@@ -609,7 +969,7 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
                 skip_stats['DAY_STOPPED'] += 1
             continue
 
-        # LAYER 4 & 6: Reset filters if month changed
+        # LAYER 4 & 6 & 8: Reset filters if month changed
         month_key = (current_time.year, current_time.month)
         if month_key != current_month_key:
             current_month_key = month_key
@@ -617,10 +977,41 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
                 pattern_filter.reset_for_month(current_time.month)
             if USE_DIRECTIONAL_FILTER and directional_filter:
                 directional_filter.reset_for_month(current_time.month)
+            if USE_STRUCTURE_FILTER and structure_filter:
+                structure_filter.reset_for_month(current_time.month)
 
         regime, _ = detect_regime(current_slice, col_map)
         if regime == Regime.SIDEWAYS:
             continue
+
+        # LAYER 7: H4 Multi-Timeframe Bias Filter (v6.8)
+        # Update H4 bias and check alignment
+        current_h4_bias = H4Bias.SIDEWAYS
+        if USE_H4_BIAS and h4_bias_filter:
+            current_h4_bias = h4_bias_filter.update(current_slice, col_map)
+            # Skip trading if H4 is sideways
+            if current_h4_bias == H4Bias.SIDEWAYS:
+                skip_stats['H4_BLOCKED'] += 1
+                h4_stats['sideways_blocked'] += 1
+                continue
+
+        # LAYER 8: Market Structure Filter (v6.9) - BOS/CHoCH
+        # Update structure on each bar to detect swing points and structure breaks
+        current_structure_type = StructureType.NONE
+        current_structure_confidence = 0.0
+        if USE_STRUCTURE_FILTER and structure_filter:
+            structure_signal = structure_filter.update(current_slice, col_map)
+            current_structure_type = structure_signal.structure_type
+            current_structure_confidence = structure_signal.confidence
+            # Track structure signals for statistics
+            if current_structure_type == StructureType.BOS_BULLISH:
+                structure_stats['bos_bullish'] += 1
+            elif current_structure_type == StructureType.BOS_BEARISH:
+                structure_stats['bos_bearish'] += 1
+            elif current_structure_type == StructureType.CHOCH_BULLISH:
+                structure_stats['choch_bullish'] += 1
+            elif current_structure_type == StructureType.CHOCH_BEARISH:
+                structure_stats['choch_bearish'] += 1
 
         # TRIPLE-LAYER QUALITY: Assess market condition
         market_cond = assess_market_condition(df, col_map, i, atr_series, current_time)
@@ -634,7 +1025,22 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
         condition_stats[market_cond.label] = condition_stats.get(market_cond.label, 0) + 1
 
         # Detect POIs with COMBINED quality threshold
-        pois = detect_order_blocks(current_slice, col_map, dynamic_quality)
+        pois = []
+
+        # Entry Signal 1: Order Block detection
+        if USE_ORDER_BLOCK:
+            ob_pois = detect_order_blocks(current_slice, col_map, dynamic_quality)
+            pois.extend(ob_pois)
+
+        # Entry Signal 2: EMA Pullback detection (v6.7)
+        if USE_EMA_PULLBACK:
+            ema_pois = detect_ema_pullback(current_slice, col_map, atr_series, dynamic_quality)
+            # Avoid duplicate signals on same bar
+            existing_indices = {p['idx'] for p in pois}
+            for ep in ema_pois:
+                if ep['idx'] not in existing_indices:
+                    pois.append(ep)
+
         if not pois:
             continue
 
@@ -644,14 +1050,55 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             if poi['direction'] == 'SELL' and regime != Regime.BEARISH:
                 continue
 
-            zone_size = abs(current_bar[col_map['high']] - current_bar[col_map['low']]) * 2
-            if abs(current_price - poi['price']) > zone_size:
+            # LAYER 7: Check H4 bias alignment
+            h4_aligned = True
+            if USE_H4_BIAS and h4_bias_filter:
+                h4_can_trade, h4_reason = h4_bias_filter.check_trade(poi['direction'])
+                if not h4_can_trade:
+                    skip_stats['H4_BLOCKED'] += 1
+                    h4_stats['contrary_blocked'] += 1
+                    continue
+                h4_aligned = True
+                h4_stats['aligned'] += 1
+
+            # LAYER 8: Check Market Structure alignment (v6.9)
+            structure_aligned = True
+            structure_quality_adj = 0
+            structure_size_mult = 1.0
+            trade_structure_type = current_structure_type
+            trade_structure_confidence = current_structure_confidence
+            if USE_STRUCTURE_FILTER and structure_filter:
+                structure_can_trade, structure_quality_adj, structure_size_mult, structure_reason = structure_filter.check_trade(poi['direction'])
+                if not structure_can_trade:
+                    skip_stats['STRUCTURE_BLOCKED'] += 1
+                    structure_stats['blocked'] += 1
+                    structure_stats['no_structure'] += 1
+                    continue
+                structure_aligned = True
+                structure_stats['aligned'] += 1
+
+            poi_type = poi.get('type', 'ORDER_BLOCK')
+
+            # SESSION-BASED HOUR+POI FILTER (v6.8)
+            # Skip underperforming combinations based on session analysis
+            session_skip, session_reason = should_skip_by_session(hour, poi_type)
+            if session_skip:
+                skip_stats[session_reason] = skip_stats.get(session_reason, 0) + 1
                 continue
 
-            prev_bar = df.iloc[i-1]
-            has_trigger, entry_type = check_entry_trigger(current_bar, prev_bar, poi['direction'], col_map)
-            if not has_trigger:
-                continue
+            # EMA_PULLBACK already has entry confirmation (bullish/bearish candle check in detect_ema_pullback)
+            if poi_type == 'EMA_PULLBACK':
+                entry_type = 'MOMENTUM'  # Already confirmed strong body
+            else:
+                # ORDER_BLOCK needs additional entry trigger
+                zone_size = abs(current_bar[col_map['high']] - current_bar[col_map['low']]) * 2
+                if abs(current_price - poi['price']) > zone_size:
+                    continue
+
+                prev_bar = df.iloc[i-1]
+                has_trigger, entry_type = check_entry_trigger(current_bar, prev_bar, poi['direction'], col_map)
+                if not has_trigger:
+                    continue
 
             risk_mult, should_skip = calculate_risk_multiplier(current_time, entry_type, poi['quality'])
             if should_skip:
@@ -694,16 +1141,38 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
                 if dir_extra_q > 0 or dir_size_mult < 1.0:
                     skip_stats['DIR_ADJUSTED'] += 1
 
-            # Combine all extra quality requirements
-            total_extra_q = pattern_extra_q + chop_extra_q + dir_extra_q
+            # FVG CONFIRMATION FILTER (Option B: filter mode)
+            # Only allow trades that are confirmed by nearby FVG zones
+            fvg_confirmed = False
+            fvg_gap_pips = 0.0
+            if USE_FVG_FILTER:
+                # Detect FVG zones
+                fvg_zones = detect_fvg(df, col_map, i, FVG_LOOKBACK)
+
+                # Check if trade direction is confirmed by FVG
+                is_confirmed, matching_fvg = check_fvg_confirmation(
+                    current_price, poi['direction'], fvg_zones, FVG_CONFIRMATION_PIPS
+                )
+
+                if is_confirmed and matching_fvg:
+                    fvg_confirmed = True
+                    fvg_gap_pips = matching_fvg.gap_size_pips
+                    entry_stats['FVG_CONFIRMED'] = entry_stats.get('FVG_CONFIRMED', 0) + 1
+                else:
+                    # Block trade if FVG filter is enabled and not confirmed
+                    skip_stats['FVG_NO_CONFIRM'] = skip_stats.get('FVG_NO_CONFIRM', 0) + 1
+                    continue
+
+            # Combine all extra quality requirements (including structure filter)
+            total_extra_q = pattern_extra_q + chop_extra_q + dir_extra_q + structure_quality_adj
             if total_extra_q > 0:
                 effective_quality = dynamic_quality + total_extra_q
                 # Re-check if POI meets stricter quality
                 if poi['quality'] < effective_quality:
                     continue
 
-            # Combine all size multipliers
-            combined_size_mult = pattern_size_mult * chop_size_mult * dir_size_mult
+            # Combine all size multipliers (including structure filter)
+            combined_size_mult = pattern_size_mult * chop_size_mult * dir_size_mult * structure_size_mult
 
             sl_pips = current_atr * SL_ATR_MULT
             tp_pips = sl_pips * TP_RATIO
@@ -714,9 +1183,18 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             if poi['direction'] == 'BUY':
                 sl_price = current_price - (sl_pips * PIP_SIZE)
                 tp_price = current_price + (tp_pips * PIP_SIZE)
+                # Partial TP at PARTIAL_TP_RR ratio
+                partial_tp_pips = sl_pips * PARTIAL_TP_RR
+                partial_tp_price = current_price + (partial_tp_pips * PIP_SIZE)
             else:
                 sl_price = current_price + (sl_pips * PIP_SIZE)
                 tp_price = current_price - (tp_pips * PIP_SIZE)
+                # Partial TP at PARTIAL_TP_RR ratio
+                partial_tp_pips = sl_pips * PARTIAL_TP_RR
+                partial_tp_price = current_price - (partial_tp_pips * PIP_SIZE)
+
+            # Track entry signal type
+            entry_stats[poi_type] = entry_stats.get(poi_type, 0) + 1
 
             position = Trade(
                 entry_time=current_time,
@@ -729,14 +1207,30 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
                 atr_pips=current_atr,
                 quality_score=poi['quality'],
                 entry_type=entry_type,
+                poi_type=poi_type,
                 session=session,
                 dynamic_quality=dynamic_quality,
                 market_condition=market_cond.label,
-                monthly_adj=market_cond.monthly_adjustment + intra_month_adj
+                monthly_adj=market_cond.monthly_adjustment + intra_month_adj,
+                # Initialize partial TP fields
+                partial_closed=False,
+                partial_pnl=0.0,
+                trailing_stop=0.0,
+                original_lot_size=lot_size,
+                partial_tp_price=partial_tp_price,
+                # H4 Bias info (v6.8)
+                h4_bias=current_h4_bias.value if USE_H4_BIAS else "",
+                h4_aligned=h4_aligned if USE_H4_BIAS else True,
+                # FVG info (v6.9)
+                fvg_confirmed=fvg_confirmed if USE_FVG_FILTER else False,
+                fvg_gap_pips=fvg_gap_pips if USE_FVG_FILTER else 0.0,
+                # Market Structure info (v6.9)
+                structure_type=trade_structure_type.value if USE_STRUCTURE_FILTER else "",
+                structure_confidence=trade_structure_confidence if USE_STRUCTURE_FILTER else 0.0
             )
             break
 
-    return trades, max_dd, condition_stats, skip_stats
+    return trades, max_dd, condition_stats, skip_stats, entry_stats, h4_stats, structure_stats
 
 
 def calculate_stats(trades: List[Trade], max_dd: float) -> dict:
@@ -919,7 +1413,8 @@ async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats
         for month, pnl in stats['monthly'].items():
             year = month.year
             mon = month.month
-            tradeable = MONTHLY_TRADEABLE_PCT.get((year, mon), 70)
+            # Use historical data if available, else seasonal template
+            tradeable = MONTHLY_TRADEABLE_PCT.get((year, mon), SEASONAL_TEMPLATE.get(mon, 65))
             adj = get_monthly_quality_adjustment(datetime(year, mon, 1))
             status = "✓" if pnl >= 0 else "✗"
             month_str = f"{year}-{mon:02d}"
@@ -935,10 +1430,40 @@ async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats
         print(f"\n[TELEGRAM] Failed to send: {e}")
 
 
-def print_results(stats: dict, trades: List[Trade], condition_stats: dict, skip_stats: dict = None):
+def print_results(stats: dict, trades: List[Trade], condition_stats: dict, skip_stats: dict = None, entry_stats: dict = None, h4_stats: dict = None, structure_stats: dict = None):
     print(f"\n{'='*70}")
-    print(f"BACKTEST RESULTS - H1 v6.4 GBPUSD TRIPLE-LAYER QUALITY")
+    print(f"BACKTEST RESULTS - H1 v6.9 GBPUSD WITH BOS/CHoCH FILTER")
     print(f"{'='*70}")
+
+    # Partial TP & Trailing Stop stats
+    if USE_PARTIAL_TP:
+        print(f"\n[PARTIAL TP & TRAILING STOP CONFIGURATION]")
+        print(f"{'-'*50}")
+        print(f"  Partial TP: {'ENABLED' if USE_PARTIAL_TP else 'DISABLED'}")
+        print(f"    - Close {PARTIAL_TP_PERCENT*100:.0f}% at {PARTIAL_TP_RR}:1 RR")
+        print(f"    - Move SL to BE: {'YES' if MOVE_SL_TO_BE else 'NO'}")
+        print(f"  Trailing Stop: {'ENABLED' if USE_TRAILING_STOP else 'DISABLED'}")
+        if USE_TRAILING_STOP:
+            print(f"    - Trail distance: {TRAIL_ATR_MULT}x ATR")
+
+        # Calculate partial TP statistics
+        partial_trades = [t for t in trades if t.partial_closed]
+        trail_exits = [t for t in trades if 'TRAIL' in t.exit_reason]
+        be_exits = [t for t in trades if t.exit_reason == 'BE_SL']
+        full_tp = [t for t in trades if t.exit_reason == 'TP']
+
+        print(f"\n[PARTIAL TP & TRAILING STOP STATS]")
+        print(f"{'-'*50}")
+        print(f"  Trades with partial TP: {len(partial_trades)}/{len(trades)} ({len(partial_trades)/len(trades)*100:.1f}%)")
+        print(f"  Trailing stop exits: {len(trail_exits)}")
+        print(f"  Breakeven exits: {len(be_exits)}")
+        print(f"  Full TP exits: {len(full_tp)}")
+
+        if partial_trades:
+            partial_pnl_sum = sum(t.partial_pnl for t in partial_trades)
+            remaining_pnl_sum = sum(t.pnl - t.partial_pnl for t in partial_trades)
+            print(f"  Partial TP P/L: ${partial_pnl_sum:+,.2f}")
+            print(f"  Remaining pos P/L: ${remaining_pnl_sum:+,.2f}")
 
     print(f"\n[TRIPLE-LAYER QUALITY CONFIGURATION]")
     print(f"{'-'*50}")
@@ -979,7 +1504,26 @@ def print_results(stats: dict, trades: List[Trade], condition_stats: dict, skip_
         print(f"    {DIR_CONSEC_LOSS_WARNING} consec losses: WARNING (35% size, +15 quality)")
         print(f"    {DIR_CONSEC_LOSS_EXTREME}+ consec losses: EXTREME (20% size, +25 quality)")
         print(f"    (Per-direction tracking, never blocks)")
-    print(f"  Combined = Layer1 + Layer2 + Layer3 + Layer4 + Layer6")
+    if USE_H4_BIAS:
+        print(f"  Layer 7 - H4 Multi-Timeframe Bias Filter (v6.8):")
+        print(f"    H4 BULLISH (EMA20 > EMA50): Only allow BUY")
+        print(f"    H4 BEARISH (EMA20 < EMA50): Only allow SELL")
+        print(f"    H4 SIDEWAYS: Skip all trading")
+        print(f"    (Aligns H1 entries with H4 trend direction)")
+    if USE_STRUCTURE_FILTER:
+        print(f"  Layer 8 - Market Structure Filter (v6.9):")
+        print(f"    BOS (Break of Structure): Trend continuation confirmation")
+        print(f"    CHoCH (Change of Character): Trend reversal signal")
+    if USE_SESSION_POI_FILTER:
+        print(f"  [NEW] Session-POI Filter (v6.8 - from session analysis):")
+        print(f"    Skip Hours: {SKIP_HOURS} (Hour 11 = 27.3% WR)")
+        print(f"    Skip ORDER_BLOCK at Hours: {SKIP_ORDER_BLOCK_HOURS} (8.3%, 14.3% WR)")
+        print(f"    Skip EMA_PULLBACK at Hours: {SKIP_EMA_PULLBACK_HOURS} (18-28% WR)")
+        print(f"    Swing lookback: {STRUCTURE_SWING_LOOKBACK} bars")
+        print(f"    BOS confidence: {STRUCTURE_BOS_CONFIDENCE}")
+        print(f"    CHoCH confidence: {STRUCTURE_CHOCH_CONFIDENCE}")
+        print(f"    (Only trades after BOS confirmation or CHoCH reversal)")
+    print(f"  Combined = Layer1 + Layer2 + Layer3 + Layer4 + Layer7 + Layer8")
 
     if skip_stats:
         print(f"\n[PROTECTION STATS]")
@@ -990,6 +1534,99 @@ def print_results(stats: dict, trades: List[Trade], condition_stats: dict, skip_
         print(f"  Pattern filter stops: {skip_stats.get('PATTERN_STOPPED', 0)}")
         print(f"  Choppiness adjusted: {skip_stats.get('CHOP_ADJUSTED', 0)}")
         print(f"  Directional adjusted: {skip_stats.get('DIR_ADJUSTED', 0)}")
+        print(f"  H4 bias blocked: {skip_stats.get('H4_BLOCKED', 0)}")
+        print(f"  Structure blocked: {skip_stats.get('STRUCTURE_BLOCKED', 0)}")
+        print(f"  FVG not confirmed: {skip_stats.get('FVG_NO_CONFIRM', 0)}")
+        # Session filter stats (v6.8)
+        session_skips = sum(v for k, v in skip_stats.items() if '_SKIP' in k)
+        if session_skips > 0:
+            print(f"  [SESSION FILTER v6.8]:")
+            print(f"    Hour 11 skipped: {skip_stats.get('HOUR_11_SKIP', 0)}")
+            print(f"    ORDER_BLOCK @ Hour 8: {skip_stats.get('OB_HOUR_8_SKIP', 0)}")
+            print(f"    ORDER_BLOCK @ Hour 16: {skip_stats.get('OB_HOUR_16_SKIP', 0)}")
+            print(f"    EMA_PULLBACK @ Hour 13: {skip_stats.get('EMA_HOUR_13_SKIP', 0)}")
+            print(f"    EMA_PULLBACK @ Hour 14: {skip_stats.get('EMA_HOUR_14_SKIP', 0)}")
+            print(f"    Total session skips: {session_skips}")
+
+    # FVG confirmation stats
+    if USE_FVG_FILTER and trades:
+        print(f"\n[FVG CONFIRMATION STATS]")
+        print(f"{'-'*50}")
+        fvg_trades = [t for t in trades if t.fvg_confirmed]
+        print(f"  FVG-confirmed trades: {len(fvg_trades)}")
+        if fvg_trades:
+            fvg_wins = len([t for t in fvg_trades if t.pnl > 0])
+            fvg_wr = fvg_wins / len(fvg_trades) * 100 if fvg_trades else 0
+            fvg_pnl = sum(t.pnl for t in fvg_trades)
+            avg_gap = sum(t.fvg_gap_pips for t in fvg_trades) / len(fvg_trades)
+            print(f"  Win rate: {fvg_wr:.1f}%")
+            print(f"  P/L: ${fvg_pnl:+,.0f}")
+            print(f"  Avg FVG gap: {avg_gap:.1f} pips")
+        print(f"  Blocked (no FVG): {skip_stats.get('FVG_NO_CONFIRM', 0)}")
+
+    if h4_stats and USE_H4_BIAS:
+        print(f"\n[H4 MULTI-TIMEFRAME BIAS STATS]")
+        print(f"{'-'*50}")
+        print(f"  H4-aligned trades: {h4_stats.get('aligned', 0)}")
+        print(f"  Contrary blocked: {h4_stats.get('contrary_blocked', 0)}")
+        print(f"  Sideways blocked: {h4_stats.get('sideways_blocked', 0)}")
+
+        # Calculate H4 bias stats from trades
+        h4_bullish_trades = [t for t in trades if t.h4_bias == 'bullish']
+        h4_bearish_trades = [t for t in trades if t.h4_bias == 'bearish']
+
+        if h4_bullish_trades:
+            h4_bull_wins = len([t for t in h4_bullish_trades if t.pnl > 0])
+            h4_bull_wr = h4_bull_wins / len(h4_bullish_trades) * 100
+            h4_bull_pnl = sum(t.pnl for t in h4_bullish_trades)
+            print(f"  H4 BULLISH trades: {len(h4_bullish_trades)}, WR: {h4_bull_wr:.1f}%, P/L: ${h4_bull_pnl:+,.0f}")
+
+        if h4_bearish_trades:
+            h4_bear_wins = len([t for t in h4_bearish_trades if t.pnl > 0])
+            h4_bear_wr = h4_bear_wins / len(h4_bearish_trades) * 100
+            h4_bear_pnl = sum(t.pnl for t in h4_bearish_trades)
+            print(f"  H4 BEARISH trades: {len(h4_bearish_trades)}, WR: {h4_bear_wr:.1f}%, P/L: ${h4_bear_pnl:+,.0f}")
+
+    if structure_stats and USE_STRUCTURE_FILTER:
+        print(f"\n[MARKET STRUCTURE STATS (BOS/CHoCH)]")
+        print(f"{'-'*50}")
+        print(f"  Structure signals detected:")
+        print(f"    BOS Bullish: {structure_stats.get('bos_bullish', 0)}")
+        print(f"    BOS Bearish: {structure_stats.get('bos_bearish', 0)}")
+        print(f"    CHoCH Bullish: {structure_stats.get('choch_bullish', 0)}")
+        print(f"    CHoCH Bearish: {structure_stats.get('choch_bearish', 0)}")
+        print(f"  Trade alignment:")
+        print(f"    Structure-aligned trades: {structure_stats.get('aligned', 0)}")
+        print(f"    Blocked (no structure): {structure_stats.get('blocked', 0)}")
+
+        # Calculate stats by structure type from trades
+        bos_trades = [t for t in trades if 'BOS' in t.structure_type]
+        choch_trades = [t for t in trades if 'CHOCH' in t.structure_type]
+
+        if bos_trades:
+            bos_wins = len([t for t in bos_trades if t.pnl > 0])
+            bos_wr = bos_wins / len(bos_trades) * 100
+            bos_pnl = sum(t.pnl for t in bos_trades)
+            avg_bos_conf = sum(t.structure_confidence for t in bos_trades) / len(bos_trades)
+            print(f"  BOS trades: {len(bos_trades)}, WR: {bos_wr:.1f}%, P/L: ${bos_pnl:+,.0f}, Avg conf: {avg_bos_conf:.2f}")
+
+        if choch_trades:
+            choch_wins = len([t for t in choch_trades if t.pnl > 0])
+            choch_wr = choch_wins / len(choch_trades) * 100
+            choch_pnl = sum(t.pnl for t in choch_trades)
+            avg_choch_conf = sum(t.structure_confidence for t in choch_trades) / len(choch_trades)
+            print(f"  CHoCH trades: {len(choch_trades)}, WR: {choch_wr:.1f}%, P/L: ${choch_pnl:+,.0f}, Avg conf: {avg_choch_conf:.2f}")
+
+    if entry_stats:
+        print(f"\n[ENTRY SIGNALS USED]")
+        print(f"{'-'*50}")
+        for sig_type, count in sorted(entry_stats.items(), key=lambda x: -x[1]):
+            # Calculate win rate per entry type
+            sig_trades = [t for t in trades if t.poi_type == sig_type]
+            sig_wins = len([t for t in sig_trades if t.pnl > 0])
+            sig_wr = (sig_wins / len(sig_trades) * 100) if sig_trades else 0
+            sig_pnl = sum(t.pnl for t in sig_trades)
+            print(f"  {sig_type}: {count} trades, {sig_wr:.1f}% WR, ${sig_pnl:+,.0f}")
 
     print(f"\n[MARKET CONDITIONS OBSERVED]")
     print(f"{'-'*50}")
@@ -1018,10 +1655,10 @@ def print_results(stats: dict, trades: List[Trade], condition_stats: dict, skip_
 
     for month, pnl in stats['monthly'].items():
         status = "WIN " if pnl >= 0 else "LOSS"
-        # Show monthly quality adjustment
+        # Show monthly quality adjustment (use seasonal template for future months)
         year = month.year
         mon = month.month
-        tradeable = MONTHLY_TRADEABLE_PCT.get((year, mon), 70)
+        tradeable = MONTHLY_TRADEABLE_PCT.get((year, mon), SEASONAL_TEMPLATE.get(mon, 65))
         adj = get_monthly_quality_adjustment(datetime(year, mon, 1))
         print(f"  [{status}] {month}: ${pnl:+,.2f} (tradeable={tradeable}%, adj=+{adj})")
 
@@ -1116,14 +1753,18 @@ async def main():
             col_map['close'] = col
 
     print(f"\nRunning backtest with TRIPLE-LAYER quality filter...")
-    trades, max_dd, condition_stats, skip_stats = run_backtest(df, col_map)
+    print(f"Entry Signals: Order Block={'ON' if USE_ORDER_BLOCK else 'OFF'}, EMA Pullback={'ON' if USE_EMA_PULLBACK else 'OFF'}")
+    print(f"H4 Bias Filter: {'ON' if USE_H4_BIAS else 'OFF'}")
+    print(f"Structure Filter: {'ON' if USE_STRUCTURE_FILTER else 'OFF'}")
+    print(f"Session-POI Filter (v6.8): {'ON' if USE_SESSION_POI_FILTER else 'OFF'}")
+    trades, max_dd, condition_stats, skip_stats, entry_stats, h4_stats, structure_stats = run_backtest(df, col_map)
 
     if not trades:
         print("No trades executed")
         return
 
     stats = calculate_stats(trades, max_dd)
-    print_results(stats, trades, condition_stats, skip_stats)
+    print_results(stats, trades, condition_stats, skip_stats, entry_stats, h4_stats, structure_stats)
 
     # Send to Telegram
     await send_telegram_report(stats, trades, condition_stats, start, end)
@@ -1136,15 +1777,24 @@ async def main():
         'entry_price': t.entry_price,
         'exit_price': t.exit_price,
         'lot_size': t.lot_size,
+        'original_lot_size': t.original_lot_size,
         'atr_pips': t.atr_pips,
         'pnl': t.pnl,
+        'partial_pnl': t.partial_pnl,
+        'partial_closed': t.partial_closed,
+        'trailing_stop': t.trailing_stop,
         'exit_reason': t.exit_reason,
         'quality_score': t.quality_score,
         'entry_type': t.entry_type,
+        'poi_type': t.poi_type,
         'session': t.session,
         'dynamic_quality': t.dynamic_quality,
         'market_condition': t.market_condition,
-        'monthly_adj': t.monthly_adj
+        'monthly_adj': t.monthly_adj,
+        'h4_bias': t.h4_bias,
+        'h4_aligned': t.h4_aligned,
+        'structure_type': t.structure_type,
+        'structure_confidence': t.structure_confidence
     } for t in trades])
 
     # Save to strategy's reports folder
