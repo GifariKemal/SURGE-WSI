@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "SURGE-WSI"
 #property link      "https://github.com/surge-wsi"
-#property version   "6.92"
+#property version   "6.93"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -521,7 +521,7 @@ void ExecuteTrade(int signal, double atr, double riskMult, string signalType)
    double balance = accInfo.Balance();
    double riskAmount = balance * (RiskPercent / 100.0) * riskMult;
 
-   double slPips = atr / pipSize * 10 * SL_ATR_Mult;
+   double slPips = atr / pipSize * SL_ATR_Mult;
    double tpPips = slPips * TP_Ratio;
 
    // Calculate initial lot size based on risk amount
