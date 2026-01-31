@@ -527,6 +527,7 @@ class Trade:
     exit_reason: str = ""
     quality_score: float = 0.0
     entry_type: str = ""
+    signal_type: str = ""  # ORDER_BLOCK or EMA_PULLBACK
     session: str = ""
     dynamic_quality: float = 0.0
     market_condition: str = ""
@@ -579,6 +580,37 @@ def calculate_atr(df: pd.DataFrame, col_map: dict, period: int = 14) -> pd.Serie
 
 def calculate_ema(series: pd.Series, period: int) -> pd.Series:
     return series.ewm(span=period, adjust=False).mean()
+
+
+def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """Calculate RSI indicator"""
+    delta = series.diff()
+    gain = delta.where(delta > 0, 0).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / (loss + 0.0001)
+    return 100 - (100 / (1 + rs))
+
+
+def calculate_adx(df: pd.DataFrame, col_map: dict, period: int = 14) -> pd.Series:
+    """Calculate ADX indicator"""
+    h, l, c = col_map['high'], col_map['low'], col_map['close']
+
+    plus_dm = (df[h] - df[h].shift(1)).clip(lower=0)
+    minus_dm = (df[l].shift(1) - df[l]).clip(lower=0)
+
+    tr = pd.concat([
+        df[h] - df[l],
+        abs(df[h] - df[c].shift(1)),
+        abs(df[l] - df[c].shift(1))
+    ], axis=1).max(axis=1)
+
+    atr = tr.rolling(period).mean()
+    plus_di = 100 * (plus_dm.rolling(period).mean() / (atr + 0.0001))
+    minus_di = 100 * (minus_dm.rolling(period).mean() / (atr + 0.0001))
+
+    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di + 0.0001)
+    adx = dx.rolling(period).mean()
+    return adx
 
 
 def assess_market_condition(df: pd.DataFrame, col_map: dict, idx: int,
@@ -753,6 +785,78 @@ def detect_order_blocks(df: pd.DataFrame, col_map: dict, min_quality: float) -> 
     return pois
 
 
+def detect_ema_pullback(df: pd.DataFrame, col_map: dict, idx: int, atr_pips: float,
+                        ema20: pd.Series, rsi: pd.Series, adx: pd.Series,
+                        min_quality: float) -> Optional[dict]:
+    """
+    Detect EMA Pullback signal - v6.9 matching MT5 logic
+
+    Criteria:
+    - Body ratio > 0.4
+    - ADX > 20 (trending market)
+    - RSI between 30-70 (not overbought/oversold)
+    - Price within 1.5x ATR distance from EMA20
+    """
+    if idx < 2:
+        return None
+
+    o, h, l, c = col_map['open'], col_map['high'], col_map['low'], col_map['close']
+    bar = df.iloc[idx]
+
+    body = abs(bar[c] - bar[o])
+    total_range = bar[h] - bar[l]
+    if total_range < 0.0003:
+        return None
+
+    body_ratio = body / total_range
+
+    # Filter criteria
+    if body_ratio < 0.4:
+        return None
+    if pd.isna(adx.iloc[idx]) or adx.iloc[idx] < 20:
+        return None
+    if pd.isna(rsi.iloc[idx]) or rsi.iloc[idx] < 30 or rsi.iloc[idx] > 70:
+        return None
+
+    is_bullish = bar[c] > bar[o]
+    is_bearish = bar[c] < bar[o]
+
+    current_ema20 = ema20.iloc[idx]
+    current_ema50 = calculate_ema(df[c], 50).iloc[idx]
+
+    # Trend check
+    curr_bullish = bar[c] > current_ema20 > current_ema50
+    curr_bearish = bar[c] < current_ema20 < current_ema50
+
+    atr_distance = atr_pips * PIP_SIZE * 1.5
+
+    # BUY: Uptrend pullback to EMA
+    if curr_bullish and is_bullish:
+        dist = bar[l] - current_ema20
+        if dist <= atr_distance:
+            touch_quality = max(0, 30 - (dist / PIP_SIZE))
+            adx_quality = min(25, (adx.iloc[idx] - 15) * 1.5)
+            rsi_quality = 25 if abs(50 - rsi.iloc[idx]) < 20 else 15
+            body_quality = min(20, body_ratio * 30)
+            quality = min(100, max(55, touch_quality + adx_quality + rsi_quality + body_quality))
+            if quality >= min_quality:
+                return {'direction': 'BUY', 'quality': quality, 'signal_type': 'EMA_PULLBACK'}
+
+    # SELL: Downtrend pullback to EMA
+    if curr_bearish and is_bearish:
+        dist = current_ema20 - bar[h]
+        if dist <= atr_distance:
+            touch_quality = max(0, 30 - (dist / PIP_SIZE))
+            adx_quality = min(25, (adx.iloc[idx] - 15) * 1.5)
+            rsi_quality = 25 if abs(50 - rsi.iloc[idx]) < 20 else 15
+            body_quality = min(20, body_ratio * 30)
+            quality = min(100, max(55, touch_quality + adx_quality + rsi_quality + body_quality))
+            if quality >= min_quality:
+                return {'direction': 'SELL', 'quality': quality, 'signal_type': 'EMA_PULLBACK'}
+
+    return None
+
+
 def check_entry_trigger(bar: pd.Series, prev_bar: pd.Series, direction: str, col_map: dict) -> Tuple[bool, str]:
     o, h, l, c = col_map['open'], col_map['high'], col_map['low'], col_map['close']
     total_range = bar[h] - bar[l]
@@ -811,6 +915,12 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
     max_dd = 0
     position: Optional[Trade] = None
     atr_series = calculate_atr(df, col_map)
+
+    # Pre-calculate indicators for EMA Pullback detection
+    c = col_map['close']
+    ema20_series = calculate_ema(df[c], 20)
+    rsi_series = calculate_rsi(df[c], 14)
+    adx_series = calculate_adx(df, col_map, 14)
 
     # Layer 3: Intra-month risk manager
     risk_manager = IntraMonthRiskManager()
@@ -941,78 +1051,100 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
 
         condition_stats[market_cond.label] = condition_stats.get(market_cond.label, 0) + 1
 
-        # Detect POIs with COMBINED quality threshold
-        pois = detect_order_blocks(current_slice, col_map, dynamic_quality)
-        if not pois:
-            continue
+        # ============================================================
+        # SIGNAL DETECTION: EMA_PULLBACK first, then ORDER_BLOCK
+        # (EMA_PULLBACK generates ~74% of trades in MT5 backtest)
+        # ============================================================
+        signal = None
+        signal_type = None
 
-        for poi in pois:
-            if poi['direction'] == 'BUY' and regime != Regime.BULLISH:
-                continue
-            if poi['direction'] == 'SELL' and regime != Regime.BEARISH:
-                continue
+        # 1. Try EMA Pullback first (higher priority in v6.9)
+        if hour not in SKIP_EMA_PULLBACK_HOURS:  # Skip EMA at hour 13, 14
+            ema_signal = detect_ema_pullback(df, col_map, i, current_atr,
+                                             ema20_series, rsi_series, adx_series,
+                                             dynamic_quality)
+            if ema_signal:
+                # Check regime alignment
+                if ema_signal['direction'] == 'BUY' and regime == Regime.BULLISH:
+                    signal = ema_signal
+                    signal_type = 'EMA_PULLBACK'
+                elif ema_signal['direction'] == 'SELL' and regime == Regime.BEARISH:
+                    signal = ema_signal
+                    signal_type = 'EMA_PULLBACK'
 
-            zone_size = abs(current_bar[col_map['high']] - current_bar[col_map['low']]) * 2
-            if abs(current_price - poi['price']) > zone_size:
-                continue
-
-            prev_bar = df.iloc[i-1]
-            has_trigger, entry_type = check_entry_trigger(current_bar, prev_bar, poi['direction'], col_map)
-            if not has_trigger:
-                continue
-
-            # v6.8 SESSION POI FILTER: Skip Order Block at specific hours
-            if SESSION_POI_FILTER_ENABLED and hour in SKIP_ORDER_BLOCK_HOURS:
-                skip_stats['SESSION_POI'] += 1
-                continue  # Skip Order Block entries at hour 8 and 16
-
-            risk_mult, should_skip = calculate_risk_multiplier(current_time, entry_type, poi['quality'])
-            if should_skip:
-                continue
-
-            # LAYER 4: Pattern-based filter check
-            pattern_can_trade, pattern_extra_q, pattern_size_mult, pattern_reason = pattern_filter.check_trade(poi['direction'])
-            if not pattern_can_trade:
-                skip_stats['PATTERN_STOPPED'] += 1
-                continue
-
-            # Apply pattern extra quality requirement
-            if pattern_extra_q > 0:
-                effective_quality = dynamic_quality + pattern_extra_q
-                # Re-check if POI meets stricter quality
-                if poi['quality'] < effective_quality:
+        # 2. If no EMA signal, try Order Block
+        if not signal and hour not in SKIP_ORDER_BLOCK_HOURS:  # Skip OB at hour 8, 16
+            pois = detect_order_blocks(current_slice, col_map, dynamic_quality)
+            for poi in pois:
+                if poi['direction'] == 'BUY' and regime != Regime.BULLISH:
+                    continue
+                if poi['direction'] == 'SELL' and regime != Regime.BEARISH:
                     continue
 
-            sl_pips = current_atr * SL_ATR_MULT
-            tp_pips = sl_pips * TP_RATIO
-            risk_amount = balance * (RISK_PERCENT / 100.0) * risk_mult * pattern_size_mult
-            lot_size = risk_amount / (sl_pips * PIP_VALUE)
-            lot_size = max(0.01, min(MAX_LOT, round(lot_size, 2)))
+                zone_size = abs(current_bar[col_map['high']] - current_bar[col_map['low']]) * 2
+                if abs(current_price - poi['price']) > zone_size:
+                    continue
 
-            if poi['direction'] == 'BUY':
-                sl_price = current_price - (sl_pips * PIP_SIZE)
-                tp_price = current_price + (tp_pips * PIP_SIZE)
-            else:
-                sl_price = current_price + (sl_pips * PIP_SIZE)
-                tp_price = current_price - (tp_pips * PIP_SIZE)
+                signal = poi
+                signal_type = 'ORDER_BLOCK'
+                break
 
-            position = Trade(
-                entry_time=current_time,
-                direction=poi['direction'],
-                entry_price=current_price,
-                sl_price=sl_price,
-                tp_price=tp_price,
-                lot_size=lot_size,
-                risk_amount=risk_amount,
-                atr_pips=current_atr,
-                quality_score=poi['quality'],
-                entry_type=entry_type,
-                session=session,
-                dynamic_quality=dynamic_quality,
-                market_condition=market_cond.label,
-                monthly_adj=market_cond.monthly_adjustment + intra_month_adj
-            )
-            break
+        if not signal:
+            continue
+
+        # Check entry trigger
+        prev_bar = df.iloc[i-1]
+        has_trigger, entry_type = check_entry_trigger(current_bar, prev_bar, signal['direction'], col_map)
+        if not has_trigger:
+            continue
+
+        risk_mult, should_skip = calculate_risk_multiplier(current_time, entry_type, signal['quality'])
+        if should_skip:
+            continue
+
+        # LAYER 4: Pattern-based filter check
+        pattern_can_trade, pattern_extra_q, pattern_size_mult, pattern_reason = pattern_filter.check_trade(signal['direction'])
+        if not pattern_can_trade:
+            skip_stats['PATTERN_STOPPED'] += 1
+            continue
+
+        # Apply pattern extra quality requirement
+        if pattern_extra_q > 0:
+            effective_quality = dynamic_quality + pattern_extra_q
+            # Re-check if signal meets stricter quality
+            if signal['quality'] < effective_quality:
+                continue
+
+        sl_pips = current_atr * SL_ATR_MULT
+        tp_pips = sl_pips * TP_RATIO
+        risk_amount = balance * (RISK_PERCENT / 100.0) * risk_mult * pattern_size_mult
+        lot_size = risk_amount / (sl_pips * PIP_VALUE)
+        lot_size = max(0.01, min(MAX_LOT, round(lot_size, 2)))
+
+        if signal['direction'] == 'BUY':
+            sl_price = current_price - (sl_pips * PIP_SIZE)
+            tp_price = current_price + (tp_pips * PIP_SIZE)
+        else:
+            sl_price = current_price + (sl_pips * PIP_SIZE)
+            tp_price = current_price - (tp_pips * PIP_SIZE)
+
+        position = Trade(
+            entry_time=current_time,
+            direction=signal['direction'],
+            entry_price=current_price,
+            sl_price=sl_price,
+            tp_price=tp_price,
+            lot_size=lot_size,
+            risk_amount=risk_amount,
+            atr_pips=current_atr,
+            quality_score=signal['quality'],
+            entry_type=entry_type,
+            signal_type=signal_type,
+            session=session,
+            dynamic_quality=dynamic_quality,
+            market_condition=market_cond.label,
+            monthly_adj=market_cond.monthly_adjustment + intra_month_adj
+        )
 
     return trades, max_dd, condition_stats, skip_stats
 
@@ -1405,6 +1537,7 @@ async def main():
         'exit_reason': t.exit_reason,
         'quality_score': t.quality_score,
         'entry_type': t.entry_type,
+        'signal_type': t.signal_type,
         'session': t.session,
         'dynamic_quality': t.dynamic_quality,
         'market_condition': t.market_condition,
