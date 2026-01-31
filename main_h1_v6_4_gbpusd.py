@@ -176,11 +176,12 @@ class TradingBot:
             logger.warning(f"Telegram init failed: {e}")
             self.telegram = None
 
-        # Initialize executor
+        # Initialize executor (MT5 primary, DB fallback)
         self.executor = H1V64GBPUSDExecutor(
             broker_client=broker,
-            db_handler=self.db,
-            telegram_bot=self.telegram
+            db_handler=self.db,  # Fallback + logging
+            telegram_bot=self.telegram,
+            mt5_connector=self.mt5  # Primary data source
         )
 
         # Register Telegram commands

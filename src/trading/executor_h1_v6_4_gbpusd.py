@@ -297,13 +297,50 @@ class H1V64GBPUSDExecutor:
     - Kill zone trading (London/NY sessions)
     """
 
-    def __init__(self, broker_client, db_handler, telegram_bot=None):
+    def __init__(self, broker_client, db_handler=None, telegram_bot=None, mt5_connector=None):
         self.broker = broker_client
-        self.db = db_handler
+        self.db = db_handler  # Optional - for fallback and logging
         self.telegram = telegram_bot
+        self.mt5 = mt5_connector  # Primary data source
         self.risk_scorer = GBPUSDRiskScorer()
         self.current_position = None
         self.last_signal_time = None
+
+    async def get_ohlcv_data(self, symbol: str, timeframe: str, bars: int = 500) -> pd.DataFrame:
+        """
+        Get OHLCV data - MT5 primary, DB fallback
+
+        Priority:
+        1. MT5 (fresh, real-time)
+        2. Database (fallback if MT5 fails)
+        """
+        df = None
+
+        # Try MT5 first (primary)
+        if self.mt5 is not None:
+            try:
+                df = self.mt5.get_ohlcv(symbol, timeframe, bars)
+                if df is not None and not df.empty:
+                    logger.debug(f"OHLCV from MT5: {len(df)} bars")
+                    return df
+            except Exception as e:
+                logger.warning(f"MT5 OHLCV failed: {e}")
+
+        # Fallback to database
+        if self.db is not None:
+            try:
+                from datetime import timedelta
+                now = datetime.now(timezone.utc)
+                start = now - timedelta(days=60)  # 60 days for 500 H1 bars
+                df = await self.db.get_ohlcv(symbol, timeframe, bars, start, now)
+                if df is not None and not df.empty:
+                    logger.debug(f"OHLCV from DB (fallback): {len(df)} bars")
+                    return df
+            except Exception as e:
+                logger.warning(f"DB OHLCV failed: {e}")
+
+        logger.error("Failed to get OHLCV from both MT5 and DB")
+        return pd.DataFrame()
 
     async def calculate_atr(self, df: pd.DataFrame, col_map: dict, period: int = 14) -> pd.Series:
         """Calculate ATR in pips"""
@@ -455,11 +492,10 @@ class H1V64GBPUSDExecutor:
         if not in_kill_zone:
             return None
 
-        # Fetch H1 data
-        start = now - timedelta(days=30)
-        df = await self.db.get_ohlcv(SYMBOL, TIMEFRAME, 500, start, now)
+        # Fetch H1 data (MT5 primary, DB fallback)
+        df = await self.get_ohlcv_data(SYMBOL, TIMEFRAME, 500)
 
-        if df.empty or len(df) < 100:
+        if df is None or df.empty or len(df) < 100:
             logger.warning("Insufficient data for analysis")
             return None
 
