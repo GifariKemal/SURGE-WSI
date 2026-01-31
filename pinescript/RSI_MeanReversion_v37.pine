@@ -1,0 +1,270 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © SURIOTA Trading Team
+
+//@version=5
+strategy("RSI Mean Reversion v3.7",
+     shorttitle="RSI v3.7",
+     overlay=true,
+     initial_capital=10000,
+     default_qty_type=strategy.percent_of_equity,
+     default_qty_value=1,
+     commission_type=strategy.commission.cash_per_order,
+     commission_value=0,
+     slippage=1,
+     pyramiding=0,
+     calc_on_every_tick=false,
+     process_orders_on_close=true)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INPUTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// RSI Settings
+grp_rsi = "RSI Settings"
+rsiPeriod = input.int(10, "RSI Period", minval=2, maxval=50, group=grp_rsi)
+rsiOversold = input.int(42, "RSI Oversold", minval=10, maxval=50, group=grp_rsi)
+rsiOverbought = input.int(58, "RSI Overbought", minval=50, maxval=90, group=grp_rsi)
+
+// ATR Settings
+grp_atr = "ATR Settings"
+atrPeriod = input.int(14, "ATR Period", minval=1, maxval=50, group=grp_atr)
+atrLookback = input.int(100, "ATR Percentile Lookback", minval=20, maxval=200, group=grp_atr)
+atrMinPct = input.float(20.0, "Min ATR Percentile", minval=0, maxval=50, group=grp_atr)
+atrMaxPct = input.float(80.0, "Max ATR Percentile", minval=50, maxval=100, group=grp_atr)
+
+// SL/TP Settings
+grp_sltp = "SL/TP Settings"
+slMult = input.float(1.5, "SL Multiplier (ATR)", minval=0.5, maxval=5, step=0.1, group=grp_sltp)
+tpLow = input.float(2.4, "TP Low Volatility", minval=1, maxval=10, step=0.1, group=grp_sltp)
+tpMed = input.float(3.0, "TP Medium Volatility", minval=1, maxval=10, step=0.1, group=grp_sltp)
+tpHigh = input.float(3.6, "TP High Volatility", minval=1, maxval=10, step=0.1, group=grp_sltp)
+tpTimeBonus = input.float(0.35, "TP Time Bonus (12-16 UTC)", minval=0, maxval=1, step=0.05, group=grp_sltp)
+
+// Time Filter
+grp_time = "Time Filter"
+tradingStartHour = input.int(7, "Trading Start Hour (UTC)", minval=0, maxval=23, group=grp_time)
+tradingEndHour = input.int(22, "Trading End Hour (UTC)", minval=0, maxval=23, group=grp_time)
+skipHour = input.int(12, "Skip Hour (UTC)", minval=0, maxval=23, group=grp_time)
+tpBonusStart = input.int(12, "TP Bonus Start Hour", minval=0, maxval=23, group=grp_time)
+tpBonusEnd = input.int(16, "TP Bonus End Hour", minval=0, maxval=23, group=grp_time)
+
+// Position Management
+grp_risk = "Risk Management"
+maxHoldingBars = input.int(46, "Max Holding (Bars)", minval=1, maxval=100, group=grp_risk)
+
+// Visual Settings
+grp_visual = "Visual Settings"
+showSignals = input.bool(true, "Show Entry Signals", group=grp_visual)
+showSLTP = input.bool(true, "Show SL/TP Lines", group=grp_visual)
+showInfo = input.bool(true, "Show Info Panel", group=grp_visual)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CALCULATIONS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// RSI Calculation
+rsi = ta.rsi(close, rsiPeriod)
+
+// ATR Calculation
+atr = ta.atr(atrPeriod)
+
+// ATR Percentile Calculation
+atrPercentile(src, len) =>
+    count = 0
+    for i = 1 to len
+        if src[i] < src
+            count += 1
+    result = count / len * 100
+    result
+
+atrPct = atrPercentile(atr, atrLookback)
+
+// Time Functions (UTC)
+currentHour = hour(time, "UTC")
+currentWeekday = dayofweek(time)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FILTERS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Weekend filter (1=Sunday, 7=Saturday)
+isWeekend = currentWeekday == 1 or currentWeekday == 7
+
+// Trading hours filter
+isValidHour = currentHour >= tradingStartHour and currentHour < tradingEndHour and currentHour != skipHour
+
+// ATR filter
+isValidATR = atrPct >= atrMinPct and atrPct <= atrMaxPct
+
+// Combined filter
+canTrade = not isWeekend and isValidHour and isValidATR
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TP MULTIPLIER
+// ══════════════════════════════════════════════════════════════════════════════
+
+getTPMultiplier() =>
+    baseTP = atrPct < 40 ? tpLow : (atrPct > 60 ? tpHigh : tpMed)
+    isTPBonusTime = currentHour >= tpBonusStart and currentHour < tpBonusEnd
+    result = isTPBonusTime ? baseTP + tpTimeBonus : baseTP
+    result
+
+tpMult = getTPMultiplier()
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SIGNALS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Entry signals
+buySignal = canTrade and rsi < rsiOversold and strategy.position_size == 0
+sellSignal = canTrade and rsi > rsiOverbought and strategy.position_size == 0
+
+// SL/TP Levels
+longSL = close - atr * slMult
+longTP = close + atr * tpMult
+shortSL = close + atr * slMult
+shortTP = close - atr * tpMult
+
+// Track position entry bar
+var int entryBar = na
+if strategy.position_size != 0 and strategy.position_size[1] == 0
+    entryBar := bar_index
+
+// Max holding exit
+barsInPosition = strategy.position_size != 0 ? bar_index - entryBar : 0
+maxHoldingExit = barsInPosition >= maxHoldingBars
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STRATEGY EXECUTION
+// ══════════════════════════════════════════════════════════════════════════════
+
+if buySignal
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long Exit", "Long", stop=longSL, limit=longTP)
+
+if sellSignal
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short Exit", "Short", stop=shortSL, limit=shortTP)
+
+// Max holding period exit
+if maxHoldingExit
+    strategy.close_all(comment="Timeout")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VISUALIZATION
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Entry signals
+plotshape(showSignals and buySignal, title="Buy Signal",
+     location=location.belowbar, color=color.new(color.green, 0),
+     style=shape.triangleup, size=size.small, text="BUY")
+
+plotshape(showSignals and sellSignal, title="Sell Signal",
+     location=location.abovebar, color=color.new(color.red, 0),
+     style=shape.triangledown, size=size.small, text="SELL")
+
+// SL/TP Lines (only when in position)
+var line slLine = na
+var line tpLine = na
+var label slLabel = na
+var label tpLabel = na
+
+if showSLTP
+    // Clean up old lines
+    if not na(slLine)
+        line.delete(slLine)
+    if not na(tpLine)
+        line.delete(tpLine)
+    if not na(slLabel)
+        label.delete(slLabel)
+    if not na(tpLabel)
+        label.delete(tpLabel)
+
+    if strategy.position_size > 0  // Long position
+        slLine := line.new(bar_index - 10, longSL, bar_index + 10, longSL,
+             color=color.red, style=line.style_dashed, width=1)
+        tpLine := line.new(bar_index - 10, longTP, bar_index + 10, longTP,
+             color=color.green, style=line.style_dashed, width=1)
+        slLabel := label.new(bar_index + 11, longSL, "SL",
+             color=color.red, textcolor=color.white, size=size.tiny)
+        tpLabel := label.new(bar_index + 11, longTP, "TP",
+             color=color.green, textcolor=color.white, size=size.tiny)
+
+    else if strategy.position_size < 0  // Short position
+        slLine := line.new(bar_index - 10, shortSL, bar_index + 10, shortSL,
+             color=color.red, style=line.style_dashed, width=1)
+        tpLine := line.new(bar_index - 10, shortTP, bar_index + 10, shortTP,
+             color=color.green, style=line.style_dashed, width=1)
+        slLabel := label.new(bar_index + 11, shortSL, "SL",
+             color=color.red, textcolor=color.white, size=size.tiny)
+        tpLabel := label.new(bar_index + 11, shortTP, "TP",
+             color=color.green, textcolor=color.white, size=size.tiny)
+
+// Background color for trading hours
+bgcolor(isValidHour and not isWeekend ? color.new(color.blue, 95) : na, title="Trading Hours")
+bgcolor(not isValidATR and isValidHour ? color.new(color.orange, 95) : na, title="ATR Filter Active")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INFO PANEL
+// ══════════════════════════════════════════════════════════════════════════════
+
+if showInfo and barstate.islast
+    var table infoPanel = table.new(position.top_right, 2, 10,
+         bgcolor=color.new(color.black, 80), border_width=1)
+
+    // Header
+    table.cell(infoPanel, 0, 0, "RSI v3.7", text_color=color.white,
+         text_size=size.normal, bgcolor=color.new(color.blue, 50))
+    table.cell(infoPanel, 1, 0, "GBPUSD H1", text_color=color.white,
+         text_size=size.normal, bgcolor=color.new(color.blue, 50))
+
+    // RSI
+    rsiColor = rsi < rsiOversold ? color.green : (rsi > rsiOverbought ? color.red : color.gray)
+    table.cell(infoPanel, 0, 1, "RSI", text_color=color.gray, text_size=size.small)
+    table.cell(infoPanel, 1, 1, str.tostring(rsi, "#.0"), text_color=rsiColor, text_size=size.small)
+
+    // ATR Percentile
+    atrColor = isValidATR ? color.green : color.orange
+    table.cell(infoPanel, 0, 2, "ATR %", text_color=color.gray, text_size=size.small)
+    table.cell(infoPanel, 1, 2, str.tostring(atrPct, "#.0") + "%", text_color=atrColor, text_size=size.small)
+
+    // TP Multiplier
+    table.cell(infoPanel, 0, 3, "TP Mult", text_color=color.gray, text_size=size.small)
+    table.cell(infoPanel, 1, 3, str.tostring(tpMult, "#.00") + "x", text_color=color.white, text_size=size.small)
+
+    // Current Hour
+    hourColor = isValidHour ? color.green : color.red
+    table.cell(infoPanel, 0, 4, "Hour (UTC)", text_color=color.gray, text_size=size.small)
+    table.cell(infoPanel, 1, 4, str.tostring(currentHour), text_color=hourColor, text_size=size.small)
+
+    // Status
+    statusText = isWeekend ? "WEEKEND" : (not isValidHour ? "OFF HOURS" : (not isValidATR ? "ATR FILTER" : "ACTIVE"))
+    statusColor = canTrade ? color.green : color.orange
+    table.cell(infoPanel, 0, 5, "Status", text_color=color.gray, text_size=size.small)
+    table.cell(infoPanel, 1, 5, statusText, text_color=statusColor, text_size=size.small)
+
+    // Position
+    posText = strategy.position_size > 0 ? "LONG" : (strategy.position_size < 0 ? "SHORT" : "FLAT")
+    posColor = strategy.position_size > 0 ? color.green : (strategy.position_size < 0 ? color.red : color.gray)
+    table.cell(infoPanel, 0, 6, "Position", text_color=color.gray, text_size=size.small)
+    table.cell(infoPanel, 1, 6, posText, text_color=posColor, text_size=size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RSI INDICATOR (Separate Pane)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Plot RSI in separate indicator
+// Uncomment below to add RSI subplot
+// indicator("RSI v3.7 - RSI Panel", shorttitle="RSI Panel", overlay=false)
+// plot(rsi, "RSI", color=color.purple, linewidth=2)
+// hline(rsiOversold, "Oversold", color=color.green, linestyle=hline.style_dashed)
+// hline(rsiOverbought, "Overbought", color=color.red, linestyle=hline.style_dashed)
+// hline(50, "Mid", color=color.gray, linestyle=hline.style_dotted)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ALERTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+alertcondition(buySignal, title="RSI v3.7 BUY", message="RSI v3.7: BUY Signal on {{ticker}} @ {{close}}")
+alertcondition(sellSignal, title="RSI v3.7 SELL", message="RSI v3.7: SELL Signal on {{ticker}} @ {{close}}")
+alertcondition(buySignal or sellSignal, title="RSI v3.7 Entry", message="RSI v3.7: {{strategy.order.action}} Signal on {{ticker}}")
