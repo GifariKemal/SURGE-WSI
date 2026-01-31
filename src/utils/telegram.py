@@ -807,23 +807,44 @@ class TelegramNotifier:
         self._rate_limit_window = 60  # seconds
 
         # Command callbacks (set by executor)
+        # Information commands
         self.on_status: Optional[Callable] = None
         self.on_balance: Optional[Callable] = None
         self.on_positions: Optional[Callable] = None
         self.on_regime: Optional[Callable] = None
         self.on_pois: Optional[Callable] = None
-        self.on_activity: Optional[Callable] = None  # Intelligent Activity Filter status
-        self.on_market: Optional[Callable] = None  # Comprehensive market analysis
+        self.on_activity: Optional[Callable] = None
+        self.on_market: Optional[Callable] = None
         self.on_mode: Optional[Callable] = None
+        self.on_layers: Optional[Callable] = None  # QUAD-LAYER status
+        self.on_autotrading: Optional[Callable] = None
+
+        # Statistics commands (NEW)
+        self.on_trades: Optional[Callable] = None  # Trade history
+        self.on_stats: Optional[Callable] = None  # Statistics
+        self.on_daily: Optional[Callable] = None  # Daily summary
+        self.on_monthly: Optional[Callable] = None  # Monthly summary
+        self.on_history: Optional[Callable] = None  # MT5 history
+        self.on_config: Optional[Callable] = None  # Configuration
+
+        # Control commands
         self.on_pause: Optional[Callable] = None
         self.on_resume: Optional[Callable] = None
-        self.on_close_all: Optional[Callable] = None
+        self.on_reset_l4: Optional[Callable] = None  # Reset Layer 4
         self.on_force_auto: Optional[Callable] = None
         self.on_force_signal: Optional[Callable] = None
+
+        # Vector DB commands (NEW)
+        self.on_vector: Optional[Callable] = None  # Vector DB status
+        self.on_sync: Optional[Callable] = None  # Manual sync
+        self.on_similar: Optional[Callable] = None  # Find similar patterns
+
+        # Testing commands
+        self.on_close_all: Optional[Callable] = None
         self.on_test_buy: Optional[Callable] = None
         self.on_test_sell: Optional[Callable] = None
-        self.on_autotrading: Optional[Callable] = None
-        self.on_help: Optional[Callable] = None  # Custom help message
+
+        self.on_help: Optional[Callable] = None
 
     async def initialize(self) -> bool:
         """Initialize bot
@@ -857,6 +878,7 @@ class TelegramNotifier:
             self._app = Application.builder().token(self.bot_token).build()
 
             # Add command handlers
+            # Information commands
             self._app.add_handler(CommandHandler("status", self._handle_status))
             self._app.add_handler(CommandHandler("balance", self._handle_balance))
             self._app.add_handler(CommandHandler("positions", self._handle_positions))
@@ -865,14 +887,34 @@ class TelegramNotifier:
             self._app.add_handler(CommandHandler("activity", self._handle_activity))
             self._app.add_handler(CommandHandler("market", self._handle_market))
             self._app.add_handler(CommandHandler("mode", self._handle_mode))
+            self._app.add_handler(CommandHandler("layers", self._handle_layers))
+            self._app.add_handler(CommandHandler("autotrading", self._handle_autotrading))
+
+            # Statistics commands (NEW)
+            self._app.add_handler(CommandHandler("trades", self._handle_trades))
+            self._app.add_handler(CommandHandler("stats", self._handle_stats))
+            self._app.add_handler(CommandHandler("daily", self._handle_daily))
+            self._app.add_handler(CommandHandler("monthly", self._handle_monthly))
+            self._app.add_handler(CommandHandler("history", self._handle_history))
+            self._app.add_handler(CommandHandler("config", self._handle_config))
+
+            # Control commands
             self._app.add_handler(CommandHandler("pause", self._handle_pause))
             self._app.add_handler(CommandHandler("resume", self._handle_resume))
-            self._app.add_handler(CommandHandler("close_all", self._handle_close_all))
+            self._app.add_handler(CommandHandler("reset_l4", self._handle_reset_l4))
             self._app.add_handler(CommandHandler("force_auto", self._handle_force_auto))
             self._app.add_handler(CommandHandler("force_signal", self._handle_force_signal))
+
+            # Testing commands
+            self._app.add_handler(CommandHandler("close_all", self._handle_close_all))
             self._app.add_handler(CommandHandler("test_buy", self._handle_test_buy))
             self._app.add_handler(CommandHandler("test_sell", self._handle_test_sell))
-            self._app.add_handler(CommandHandler("autotrading", self._handle_autotrading))
+
+            # Vector DB commands
+            self._app.add_handler(CommandHandler("vector", self._handle_vector))
+            self._app.add_handler(CommandHandler("sync", self._handle_sync))
+            self._app.add_handler(CommandHandler("similar", self._handle_similar))
+
             self._app.add_handler(CommandHandler("help", self._handle_help))
 
             await self._app.initialize()
@@ -918,6 +960,82 @@ class TelegramNotifier:
             self._message_times.append(now)
         except Exception as e:
             logger.error(f"Telegram send failed: {e}")
+
+    async def send_photo(
+        self,
+        photo_path: str,
+        caption: str = None,
+        force: bool = False
+    ):
+        """Send photo to chat
+
+        Args:
+            photo_path: Path to image file
+            caption: Optional caption (HTML formatted)
+            force: Bypass rate limiting
+        """
+        if not self.enabled or not self._bot:
+            return
+
+        # Rate limiting check
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(seconds=self._rate_limit_window)
+        self._message_times = [t for t in self._message_times if t > cutoff]
+
+        if not force and len(self._message_times) >= self._rate_limit_messages:
+            logger.warning("Telegram rate limit reached, skipping photo")
+            return
+
+        try:
+            with open(photo_path, 'rb') as photo:
+                await self._bot.send_photo(
+                    chat_id=self.chat_id,
+                    photo=photo,
+                    caption=caption,
+                    parse_mode='HTML' if caption else None
+                )
+            self._message_times.append(now)
+            logger.info(f"Photo sent: {photo_path}")
+        except Exception as e:
+            logger.error(f"Telegram send photo failed: {e}")
+
+    async def send_document(
+        self,
+        document_path: str,
+        caption: str = None,
+        force: bool = False
+    ):
+        """Send document/file to chat
+
+        Args:
+            document_path: Path to file
+            caption: Optional caption
+            force: Bypass rate limiting
+        """
+        if not self.enabled or not self._bot:
+            return
+
+        # Rate limiting check
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(seconds=self._rate_limit_window)
+        self._message_times = [t for t in self._message_times if t > cutoff]
+
+        if not force and len(self._message_times) >= self._rate_limit_messages:
+            logger.warning("Telegram rate limit reached, skipping document")
+            return
+
+        try:
+            with open(document_path, 'rb') as doc:
+                await self._bot.send_document(
+                    chat_id=self.chat_id,
+                    document=doc,
+                    caption=caption,
+                    parse_mode='HTML' if caption else None
+                )
+            self._message_times.append(now)
+            logger.info(f"Document sent: {document_path}")
+        except Exception as e:
+            logger.error(f"Telegram send document failed: {e}")
 
     # Command handlers - with exception handling
     async def _handle_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1124,6 +1242,140 @@ class TelegramNotifier:
                 await update.message.reply_text("AutoTrading check not available")
         except Exception as e:
             logger.error(f"Error handling /autotrading: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_layers(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /layers command - QUAD-LAYER status"""
+        try:
+            if self.on_layers:
+                result = await self.on_layers()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Layers status not available")
+        except Exception as e:
+            logger.error(f"Error handling /layers: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_trades(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /trades command - Recent trade history"""
+        try:
+            if self.on_trades:
+                result = await self.on_trades()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Trade history not available")
+        except Exception as e:
+            logger.error(f"Error handling /trades: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /stats command - Trading statistics"""
+        try:
+            if self.on_stats:
+                result = await self.on_stats()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Statistics not available")
+        except Exception as e:
+            logger.error(f"Error handling /stats: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_daily(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /daily command - Daily summary"""
+        try:
+            if self.on_daily:
+                result = await self.on_daily()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Daily summary not available")
+        except Exception as e:
+            logger.error(f"Error handling /daily: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_monthly(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /monthly command - Monthly summary"""
+        try:
+            if self.on_monthly:
+                result = await self.on_monthly()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Monthly summary not available")
+        except Exception as e:
+            logger.error(f"Error handling /monthly: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /history command - MT5 trade history"""
+        try:
+            if self.on_history:
+                result = await self.on_history()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("MT5 history not available")
+        except Exception as e:
+            logger.error(f"Error handling /history: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_config(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /config command - Configuration"""
+        try:
+            if self.on_config:
+                result = await self.on_config()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Configuration not available")
+        except Exception as e:
+            logger.error(f"Error handling /config: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_reset_l4(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /reset_l4 command - Reset Layer 4 pattern filter"""
+        try:
+            if self.on_reset_l4:
+                result = await self.on_reset_l4()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Reset L4 not available")
+        except Exception as e:
+            logger.error(f"Error handling /reset_l4: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_vector(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /vector command - Vector DB status"""
+        try:
+            if self.on_vector:
+                result = await self.on_vector()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Vector DB status not available")
+        except Exception as e:
+            logger.error(f"Error handling /vector: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_sync(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /sync command - Manual vector sync"""
+        try:
+            if self.on_sync:
+                await update.message.reply_text("🔄 <i>Syncing vector database...</i>", parse_mode='HTML')
+                result = await self.on_sync()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Vector sync not available")
+        except Exception as e:
+            logger.error(f"Error handling /sync: {e}")
+            await update.message.reply_text(f"Error: {e}")
+
+    async def _handle_similar(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /similar command - Find similar patterns"""
+        try:
+            if self.on_similar:
+                await update.message.reply_text("🔍 <i>Searching similar patterns...</i>", parse_mode='HTML')
+                result = await self.on_similar()
+                await update.message.reply_text(result, parse_mode='HTML')
+            else:
+                await update.message.reply_text("Similar patterns search not available")
+        except Exception as e:
+            logger.error(f"Error handling /similar: {e}")
             await update.message.reply_text(f"Error: {e}")
 
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

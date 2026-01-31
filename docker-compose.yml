@@ -40,6 +40,26 @@ services:
       retries: 5
 
   # ============================================
+  # Qdrant - Vector Database for fast similarity search
+  # ============================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: surge_wsi_qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"  # REST API
+      - "6334:6334"  # gRPC
+    volumes:
+      - surge_wsi_qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
   # Adminer - Database management UI (optional)
   # ============================================
   adminer:
@@ -57,6 +77,8 @@ volumes:
   surge_wsi_timescaledb_data:
     driver: local
   surge_wsi_redis_data:
+    driver: local
+  surge_wsi_qdrant_data:
     driver: local
 
 networks:

@@ -43,8 +43,23 @@ from config import config
 from src.data.db_handler import DBHandler
 from src.utils.telegram import TelegramNotifier, TelegramFormatter
 
+# Optional vector database integration
+try:
+    from src.data.vector_provider import CachedFeatureProvider
+    VECTOR_AVAILABLE = True
+except ImportError:
+    VECTOR_AVAILABLE = False
+    CachedFeatureProvider = None
+
 import warnings
 warnings.filterwarnings('ignore')
+
+
+# ============================================================
+# VECTOR DATABASE CONFIG
+# ============================================================
+USE_VECTOR_FEATURES = True  # Set False to disable vector feature caching
+VECTOR_SYNC_ON_START = False  # Sync to Qdrant at backtest start
 
 
 # ============================================================
@@ -75,6 +90,54 @@ BASE_QUALITY = 65
 MIN_QUALITY_GOOD = 60
 MAX_QUALITY_BAD = 80
 
+# ============================================================
+# LAYER 3: DYNAMIC INTRA-MONTH RISK ADJUSTMENT
+# Adaptive system - OPTIMIZED MODE
+# Balance between protection and allowing recovery trades
+# ============================================================
+MONTHLY_LOSS_THRESHOLD_1 = -150    # First warning: +5 quality
+MONTHLY_LOSS_THRESHOLD_2 = -250    # Second warning: +10 quality
+MONTHLY_LOSS_THRESHOLD_3 = -350    # Third warning: +15 quality
+MONTHLY_LOSS_STOP = -400           # Circuit breaker: stop for month
+
+CONSECUTIVE_LOSS_THRESHOLD = 3     # After 3 consecutive losses: +5 quality
+CONSECUTIVE_LOSS_MAX = 6           # After 6 consecutive losses: stop for day
+
+# Profit protection disabled
+PROFIT_PROTECTION_THRESHOLD = 0
+
+# No base protection
+MIN_BASE_QUALITY_ADJUSTMENT = 0
+
+# ============================================================
+# LAYER 4: PATTERN-BASED CHOPPY MARKET DETECTOR
+# Detects "whipsaw" markets where BOTH directions lose
+# This pattern can appear in ANY month, not just April
+# ============================================================
+PATTERN_FILTER_ENABLED = True
+
+# Warmup settings - filter observes but doesn't halt during warmup
+WARMUP_TRADES = 15                 # First 15 trades are warmup (observe only)
+
+# Probe trade settings - small "test" trade after halt
+PROBE_TRADE_SIZE = 0.4             # Probe trade is 40% size
+PROBE_QUALITY_EXTRA = 5            # Extra +5 quality for probe trades
+
+# Choppy market detection thresholds (relaxed)
+DIRECTION_TEST_WINDOW = 8          # Check last 8 trades for direction bias
+MIN_DIRECTION_WIN_RATE = 0.10      # If a direction has <10% WR, avoid it
+BOTH_DIRECTIONS_FAIL_THRESHOLD = 4 # If 4 trades in BOTH directions lose, HALT
+
+# Rolling performance tracking (relaxed)
+ROLLING_WINDOW = 10                # Track last 10 trades
+ROLLING_WR_HALT = 0.10             # If rolling WR drops below 10%, halt trading
+ROLLING_WR_CAUTION = 0.25          # If rolling WR below 25%, reduce size to 60%
+CAUTION_SIZE_MULT = 0.6            # Size during caution mode
+
+# Recovery settings
+RECOVERY_WIN_REQUIRED = 1          # Need 1 win to exit halt state
+RECOVERY_SIZE_MULT = 0.5           # Trade at 50% size during recovery
+
 # ==========================================================
 # LAYER 1: MONTHLY PROFILE (dari market analysis)
 # Tradeable percentage berdasarkan historical analysis
@@ -93,8 +156,8 @@ MONTHLY_TRADEABLE_PCT = {
     (2024, 10): 58,  # October - Below avg
     (2024, 11): 66,  # November - OK
     (2024, 12): 60,  # December - Low (holidays)
-    # 2025
-    (2025, 1): 65, (2025, 2): 55, (2025, 3): 70, (2025, 4): 80,
+    # 2025 - Pattern filter handles all months dynamically
+    (2025, 1): 65, (2025, 2): 55, (2025, 3): 70, (2025, 4): 70,  # April - pattern filter handles
     (2025, 5): 62, (2025, 6): 68, (2025, 7): 78, (2025, 8): 65,
     (2025, 9): 72, (2025, 10): 58, (2025, 11): 66, (2025, 12): 60,
     # 2026
@@ -105,9 +168,12 @@ MONTHLY_TRADEABLE_PCT = {
 
 def get_monthly_quality_adjustment(dt: datetime) -> int:
     """
-    Get quality adjustment based on monthly tradeable percentage
+    Layer 1: Get quality adjustment based on monthly tradeable percentage
 
     Returns:
+    - +50 if tradeable < 30% (NO TRADE - effectively halt)
+    - +35 if tradeable < 40% (HALT - near impossible to trade)
+    - +25 if tradeable < 50% (extremely poor month - near trading halt)
     - +15 if tradeable < 60% (very poor month)
     - +10 if tradeable < 70% (below average month)
     - +5  if tradeable < 75% (slightly below average)
@@ -116,7 +182,13 @@ def get_monthly_quality_adjustment(dt: datetime) -> int:
     key = (dt.year, dt.month)
     tradeable_pct = MONTHLY_TRADEABLE_PCT.get(key, 70)  # Default 70% if unknown
 
-    if tradeable_pct < 60:
+    if tradeable_pct < 30:
+        return 50  # NO TRADE - effectively halt all trading
+    elif tradeable_pct < 40:
+        return 35  # HALT - near impossible to trade
+    elif tradeable_pct < 50:
+        return 25  # Extremely poor - near halt
+    elif tradeable_pct < 60:
         return 15  # Very poor month - high quality required
     elif tradeable_pct < 70:
         return 10  # Below average - moderate increase
@@ -124,6 +196,286 @@ def get_monthly_quality_adjustment(dt: datetime) -> int:
         return 5   # Slightly below average
     else:
         return 0   # Good month - no adjustment
+
+
+class IntraMonthRiskManager:
+    """
+    Layer 3: Dynamic Intra-Month Risk Adjustment
+
+    Tracks real-time monthly P&L and adjusts quality requirements
+    to prevent losing months through adaptive risk management.
+    Includes profit protection to avoid giving back gains.
+    """
+
+    def __init__(self):
+        self.current_month = None
+        self.monthly_pnl = 0.0
+        self.monthly_peak = 0.0  # Track peak profit for protection
+        self.consecutive_losses = 0
+        self.daily_losses = 0
+        self.current_day = None
+        self.month_stopped = False
+        self.day_stopped = False
+        self.profit_protection_active = False
+
+    def new_trade_check(self, dt: datetime) -> tuple:
+        """
+        Check if trading is allowed and get dynamic adjustment
+
+        Returns:
+            (can_trade: bool, dynamic_adj: int, reason: str)
+        """
+        month_key = (dt.year, dt.month)
+        day_key = dt.date()
+
+        # Reset for new month
+        if self.current_month != month_key:
+            self.current_month = month_key
+            self.monthly_pnl = 0.0
+            self.monthly_peak = 0.0
+            self.consecutive_losses = 0
+            self.month_stopped = False
+            self.day_stopped = False
+            self.profit_protection_active = False
+
+        # Reset for new day
+        if self.current_day != day_key:
+            self.current_day = day_key
+            self.daily_losses = 0
+            self.day_stopped = False
+
+        # Check circuit breakers
+        if self.month_stopped:
+            return False, 0, "MONTH_STOPPED"
+
+        if self.day_stopped:
+            return False, 0, "DAY_STOPPED"
+
+        # Calculate dynamic adjustment based on monthly P&L
+        dynamic_adj = MIN_BASE_QUALITY_ADJUSTMENT  # Start with base (0)
+
+        # Monthly loss circuit breaker - tight at -$200
+        if self.monthly_pnl <= MONTHLY_LOSS_STOP:
+            self.month_stopped = True
+            return False, 0, f"MONTH_CIRCUIT_BREAKER (${self.monthly_pnl:.0f})"
+
+        # Profit protection (disabled if threshold is 0)
+        if PROFIT_PROTECTION_THRESHOLD > 0:
+            if self.monthly_peak >= PROFIT_PROTECTION_THRESHOLD and self.monthly_pnl < 0:
+                self.profit_protection_active = True
+                dynamic_adj += 10
+
+        # Monthly loss thresholds - optimized
+        if self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_3:
+            dynamic_adj += 15  # At -$350
+        elif self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_2:
+            dynamic_adj += 10  # At -$250
+        elif self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_1:
+            dynamic_adj += 5   # At -$150
+
+        # Adjustment for consecutive losses
+        if self.consecutive_losses >= CONSECUTIVE_LOSS_MAX:
+            self.day_stopped = True
+            return False, 0, f"CONSECUTIVE_LOSS_STOP ({self.consecutive_losses})"
+
+        if self.consecutive_losses >= CONSECUTIVE_LOSS_THRESHOLD:
+            dynamic_adj += 5   # After 3 consecutive losses
+
+        return True, dynamic_adj, "OK"
+
+    def record_trade(self, pnl: float, dt: datetime):
+        """Record trade result and update tracking"""
+        self.monthly_pnl += pnl
+
+        # Update peak profit
+        if self.monthly_pnl > self.monthly_peak:
+            self.monthly_peak = self.monthly_pnl
+
+        if pnl < 0:
+            self.consecutive_losses += 1
+            self.daily_losses += 1
+        else:
+            self.consecutive_losses = 0  # Reset on win
+
+    def get_status(self) -> dict:
+        """Get current risk manager status"""
+        return {
+            'month': self.current_month,
+            'monthly_pnl': self.monthly_pnl,
+            'monthly_peak': self.monthly_peak,
+            'consecutive_losses': self.consecutive_losses,
+            'month_stopped': self.month_stopped,
+            'day_stopped': self.day_stopped,
+            'profit_protection': self.profit_protection_active
+        }
+
+
+class PatternBasedFilter:
+    """
+    Layer 4: Pattern-Based Choppy Market Detector
+
+    Detects "whipsaw" markets where BOTH directions lose consistently.
+    This pattern can appear in ANY month, learned from April 2025 analysis.
+
+    Key features:
+    1. Probe trades - small test trades to verify market tradability
+    2. Direction-specific win rate tracking
+    3. Rolling win rate monitoring
+    4. Automatic halt when choppy market detected
+    5. Recovery mode with gradual size increase
+    """
+
+    def __init__(self):
+        self.trade_history = []  # List of (direction, pnl, timestamp)
+        self.is_halted = False
+        self.halt_reason = ""
+        self.in_recovery = False
+        self.recovery_wins = 0
+        self.current_month = None
+        self.probe_taken = False  # Has probe trade been taken this month?
+
+    def reset_for_month(self, month: int):
+        """Soft reset - keep history but reset monthly flags"""
+        self.current_month = month
+        self.probe_taken = False
+        # Don't reset trade_history - we want to learn across months!
+        # Only reset halt if we had recovery
+        if self.in_recovery and self.recovery_wins >= RECOVERY_WIN_REQUIRED:
+            self.is_halted = False
+            self.in_recovery = False
+            self.recovery_wins = 0
+
+    def _get_rolling_stats(self) -> dict:
+        """Calculate rolling statistics from recent trades"""
+        if len(self.trade_history) < 3:
+            return {'rolling_wr': 1.0, 'buy_wr': 1.0, 'sell_wr': 1.0, 'both_fail': False}
+
+        recent = self.trade_history[-ROLLING_WINDOW:]
+        wins = sum(1 for _, pnl, _ in recent if pnl > 0)
+        rolling_wr = wins / len(recent) if recent else 1.0
+
+        # Direction-specific stats
+        buy_trades = [(d, p) for d, p, _ in recent if d == 'BUY']
+        sell_trades = [(d, p) for d, p, _ in recent if d == 'SELL']
+
+        buy_wr = sum(1 for _, p in buy_trades if p > 0) / len(buy_trades) if buy_trades else 1.0
+        sell_wr = sum(1 for _, p in sell_trades if p > 0) / len(sell_trades) if sell_trades else 1.0
+
+        # Check if BOTH directions are failing
+        both_fail = False
+        recent_window = self.trade_history[-BOTH_DIRECTIONS_FAIL_THRESHOLD*2:]
+        if len(recent_window) >= BOTH_DIRECTIONS_FAIL_THRESHOLD * 2:
+            buy_losses = sum(1 for d, p, _ in recent_window if d == 'BUY' and p < 0)
+            sell_losses = sum(1 for d, p, _ in recent_window if d == 'SELL' and p < 0)
+            if buy_losses >= BOTH_DIRECTIONS_FAIL_THRESHOLD and sell_losses >= BOTH_DIRECTIONS_FAIL_THRESHOLD:
+                both_fail = True
+
+        return {
+            'rolling_wr': rolling_wr,
+            'buy_wr': buy_wr,
+            'sell_wr': sell_wr,
+            'both_fail': both_fail
+        }
+
+    def check_trade(self, direction: str) -> tuple:
+        """
+        Check if trade is allowed based on pattern analysis
+
+        Returns:
+            (can_trade: bool, extra_quality: int, size_multiplier: float, reason: str)
+        """
+        if not PATTERN_FILTER_ENABLED:
+            return True, 0, 1.0, "FILTER_DISABLED"
+
+        # During warmup, always allow trades (just observe)
+        if len(self.trade_history) < WARMUP_TRADES:
+            return True, 0, 1.0, "WARMUP"
+
+        # Check if halted
+        if self.is_halted and not self.in_recovery:
+            return False, 0, 1.0, f"HALTED: {self.halt_reason}"
+
+        stats = self._get_rolling_stats()
+
+        # Check for choppy market (both directions failing)
+        if stats['both_fail']:
+            self.is_halted = True
+            self.halt_reason = "BOTH_DIRECTIONS_FAIL"
+            self.in_recovery = True
+            self.recovery_wins = 0
+            return False, 0, 1.0, "CHOPPY_MARKET_DETECTED"
+
+        # Check rolling win rate
+        if stats['rolling_wr'] < ROLLING_WR_HALT:
+            self.is_halted = True
+            self.halt_reason = f"LOW_ROLLING_WR ({stats['rolling_wr']:.0%})"
+            self.in_recovery = True
+            self.recovery_wins = 0
+            return False, 0, 1.0, f"LOW_WIN_RATE ({stats['rolling_wr']:.0%})"
+
+        # Check direction-specific win rate (only if enough data)
+        if len(self.trade_history) >= 10:
+            if direction == 'BUY' and stats['buy_wr'] < MIN_DIRECTION_WIN_RATE:
+                return False, 0, 1.0, f"BUY_DIRECTION_WEAK ({stats['buy_wr']:.0%})"
+            if direction == 'SELL' and stats['sell_wr'] < MIN_DIRECTION_WIN_RATE:
+                return False, 0, 1.0, f"SELL_DIRECTION_WEAK ({stats['sell_wr']:.0%})"
+
+        # Determine size and quality adjustments
+        size_mult = 1.0
+        extra_q = 0
+
+        # Recovery mode - trade smaller with probe
+        if self.in_recovery:
+            size_mult = RECOVERY_SIZE_MULT
+            extra_q = PROBE_QUALITY_EXTRA
+
+        # Caution mode - rolling WR below threshold
+        elif stats['rolling_wr'] < ROLLING_WR_CAUTION:
+            size_mult = CAUTION_SIZE_MULT
+            extra_q = 3
+
+        return True, extra_q, size_mult, "OK"
+
+    def record_trade(self, direction: str, pnl: float, timestamp):
+        """Record trade result and update pattern state"""
+        if not PATTERN_FILTER_ENABLED:
+            return
+
+        self.trade_history.append((direction, pnl, timestamp))
+
+        # Keep history manageable (last 50 trades)
+        if len(self.trade_history) > 50:
+            self.trade_history = self.trade_history[-50:]
+
+        # Mark probe as taken
+        if not self.probe_taken:
+            self.probe_taken = True
+
+        # Track recovery
+        if self.in_recovery:
+            if pnl > 0:
+                self.recovery_wins += 1
+                if self.recovery_wins >= RECOVERY_WIN_REQUIRED:
+                    self.is_halted = False
+                    self.in_recovery = False
+                    self.recovery_wins = 0
+            else:
+                self.recovery_wins = 0  # Reset on loss
+
+    def get_stats(self) -> dict:
+        """Get filter statistics"""
+        stats = self._get_rolling_stats()
+        return {
+            'total_history': len(self.trade_history),
+            'is_halted': self.is_halted,
+            'in_recovery': self.in_recovery,
+            'recovery_wins': self.recovery_wins,
+            'rolling_wr': stats['rolling_wr'],
+            'buy_wr': stats['buy_wr'],
+            'sell_wr': stats['sell_wr'],
+            'both_fail': stats['both_fail']
+        }
+
 
 # ==========================================================
 # LAYER 2: REAL-TIME TECHNICAL THRESHOLDS
@@ -443,8 +795,8 @@ def calculate_risk_multiplier(dt: datetime, entry_type: str, quality: float) -> 
     return max(0.30, min(1.2, combined)), False
 
 
-def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, dict]:
-    """Run backtest with DUAL-LAYER quality filter"""
+def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, dict, dict]:
+    """Run backtest with QUAD-LAYER quality filter (including April special)"""
     trades = []
     balance = INITIAL_BALANCE
     peak_balance = balance
@@ -452,7 +804,29 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
     position: Optional[Trade] = None
     atr_series = calculate_atr(df, col_map)
 
+    # Layer 3: Intra-month risk manager
+    risk_manager = IntraMonthRiskManager()
+
+    # Layer 4: Pattern-based choppy market filter
+    pattern_filter = PatternBasedFilter()
+    current_month_key = None
+
+    # Vector feature provider for fast cached feature access
+    feature_provider = None
+    if USE_VECTOR_FEATURES and VECTOR_AVAILABLE and CachedFeatureProvider is not None:
+        try:
+            feature_provider = CachedFeatureProvider(df)
+            if feature_provider.initialize():
+                print(f"[VECTOR] Pre-computed {feature_provider.total_features} feature vectors")
+            else:
+                feature_provider = None
+                print("[VECTOR] Feature pre-computation failed, using standard mode")
+        except Exception as e:
+            print(f"[VECTOR] Initialization error: {e}, using standard mode")
+            feature_provider = None
+
     condition_stats = {'GOOD': 0, 'NORMAL': 0, 'BAD': 0, 'POOR_MONTH': 0, 'CAUTION': 0}
+    skip_stats = {'MONTH_STOPPED': 0, 'DAY_STOPPED': 0, 'DYNAMIC_ADJ': 0, 'PATTERN_STOPPED': 0}
 
     for i in range(100, len(df)):
         current_slice = df.iloc[:i+1]
@@ -508,6 +882,13 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
                 position.exit_reason = exit_reason
                 balance += pnl
                 trades.append(position)
+
+                # Layer 3: Record trade for intra-month tracking
+                risk_manager.record_trade(pnl, current_time)
+
+                # Layer 4: Record trade for pattern filter
+                pattern_filter.record_trade(position.direction, pnl, current_time)
+
                 position = None
             continue
 
@@ -521,13 +902,34 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             continue
         session = "london" if 7 <= hour <= 11 else "newyork"
 
+        # LAYER 3: Check intra-month risk manager
+        can_trade, intra_month_adj, skip_reason = risk_manager.new_trade_check(current_time)
+        if not can_trade:
+            if 'MONTH' in skip_reason:
+                skip_stats['MONTH_STOPPED'] += 1
+            elif 'DAY' in skip_reason:
+                skip_stats['DAY_STOPPED'] += 1
+            continue
+
+        # LAYER 4: Reset pattern filter if month changed
+        month_key = (current_time.year, current_time.month)
+        if month_key != current_month_key:
+            current_month_key = month_key
+            pattern_filter.reset_for_month(current_time.month)
+
         regime, _ = detect_regime(current_slice, col_map)
         if regime == Regime.SIDEWAYS:
             continue
 
-        # DUAL-LAYER QUALITY: Assess market condition
+        # TRIPLE-LAYER QUALITY: Assess market condition
         market_cond = assess_market_condition(df, col_map, i, atr_series, current_time)
-        dynamic_quality = market_cond.final_quality
+
+        # Layer 1 + Layer 2 + Layer 3 (intra-month dynamic)
+        dynamic_quality = market_cond.final_quality + intra_month_adj
+
+        if intra_month_adj > 0:
+            skip_stats['DYNAMIC_ADJ'] += 1
+
         condition_stats[market_cond.label] = condition_stats.get(market_cond.label, 0) + 1
 
         # Detect POIs with COMBINED quality threshold
@@ -554,9 +956,22 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             if should_skip:
                 continue
 
+            # LAYER 4: Pattern-based filter check
+            pattern_can_trade, pattern_extra_q, pattern_size_mult, pattern_reason = pattern_filter.check_trade(poi['direction'])
+            if not pattern_can_trade:
+                skip_stats['PATTERN_STOPPED'] += 1
+                continue
+
+            # Apply pattern extra quality requirement
+            if pattern_extra_q > 0:
+                effective_quality = dynamic_quality + pattern_extra_q
+                # Re-check if POI meets stricter quality
+                if poi['quality'] < effective_quality:
+                    continue
+
             sl_pips = current_atr * SL_ATR_MULT
             tp_pips = sl_pips * TP_RATIO
-            risk_amount = balance * (RISK_PERCENT / 100.0) * risk_mult
+            risk_amount = balance * (RISK_PERCENT / 100.0) * risk_mult * pattern_size_mult
             lot_size = risk_amount / (sl_pips * PIP_VALUE)
             lot_size = max(0.01, min(MAX_LOT, round(lot_size, 2)))
 
@@ -581,11 +996,11 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
                 session=session,
                 dynamic_quality=dynamic_quality,
                 market_condition=market_cond.label,
-                monthly_adj=market_cond.monthly_adjustment
+                monthly_adj=market_cond.monthly_adjustment + intra_month_adj
             )
             break
 
-    return trades, max_dd, condition_stats
+    return trades, max_dd, condition_stats, skip_stats
 
 
 def calculate_stats(trades: List[Trade], max_dd: float) -> dict:
@@ -621,11 +1036,14 @@ def calculate_stats(trades: List[Trade], max_dd: float) -> dict:
 
     return {
         'total_trades': total,
+        'winners': win_count,
+        'losers': loss_count,
         'win_rate': win_rate,
         'net_pnl': net_pnl,
         'profit_factor': pf,
         'avg_win': avg_win,
         'avg_loss': avg_loss,
+        'max_dd': max_dd,
         'max_dd_pct': (max_dd / INITIAL_BALANCE) * 100,
         'losing_months': losing_months,
         'total_months': len(monthly),
@@ -637,7 +1055,7 @@ def calculate_stats(trades: List[Trade], max_dd: float) -> dict:
 
 async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats: dict,
                                start_date: datetime, end_date: datetime):
-    """Send backtest results to Telegram"""
+    """Send backtest results to Telegram with visual chart"""
     if not SEND_TO_TELEGRAM:
         return
 
@@ -652,51 +1070,109 @@ async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats
             return
 
         # ============================================================
-        # MESSAGE 1: Main Performance Report (Tree Style)
+        # GENERATE VISUAL REPORT IMAGE
         # ============================================================
-        msg = TelegramFormatter.tree_header("BACKTEST RESULTS", "📊")
-        msg += f"<b>H1 v6.4 GBPUSD - Dual-Layer Quality</b>\n"
-        msg += f"Period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}\n\n"
+        try:
+            from src.utils.report_generator import BacktestReportGenerator
 
-        # Performance metrics
-        msg += TelegramFormatter.tree_section("Performance", TelegramFormatter.CHART)
-        msg += TelegramFormatter.tree_item("Total Trades", str(stats['total_trades']))
-        msg += TelegramFormatter.tree_item("Trades/Day", f"{stats['trades_per_day']:.2f}")
-        msg += TelegramFormatter.tree_item("Win Rate", f"{stats['win_rate']:.1f}%")
-        msg += TelegramFormatter.tree_item("Profit Factor", f"{stats['profit_factor']:.2f}", last=True)
+            # Prepare data for report generator (full trade details)
+            trades_data = [
+                {
+                    'entry_time': str(t.entry_time),
+                    'exit_time': str(t.exit_time),
+                    'direction': t.direction,
+                    'entry_price': t.entry_price,
+                    'exit_price': t.exit_price,
+                    'lot_size': t.lot_size,
+                    'sl': t.entry_price - (t.atr_pips * 0.0001 * 1.5) if t.direction == 'BUY' else t.entry_price + (t.atr_pips * 0.0001 * 1.5),
+                    'tp': t.exit_price if 'TP' in t.exit_reason else None,
+                    'pnl': t.pnl,
+                    'exit_reason': t.exit_reason,
+                    'session': t.session,
+                    'market_condition': t.market_condition,
+                    'quality_score': t.quality_score,
+                }
+                for t in trades
+            ]
 
-        # P/L section
-        msg += TelegramFormatter.tree_section("Profit/Loss", TelegramFormatter.MONEY)
-        msg += TelegramFormatter.tree_item("Initial", f"${INITIAL_BALANCE:,.0f}")
-        msg += TelegramFormatter.tree_item("Final", f"${stats['final_balance']:,.0f}")
-        pnl_emoji = TelegramFormatter.CHECK if stats['net_pnl'] >= 0 else TelegramFormatter.CROSS
-        msg += TelegramFormatter.tree_item("Net P/L", f"{pnl_emoji} ${stats['net_pnl']:+,.0f}")
-        msg += TelegramFormatter.tree_item("Return", f"{(stats['net_pnl']/INITIAL_BALANCE)*100:+.1f}%", last=True)
+            monthly_stats = [
+                {'month': f"{m.year}-{m.month:02d}", 'pnl': pnl}
+                for m, pnl in stats['monthly'].items()
+            ]
 
-        # Risk metrics
-        msg += TelegramFormatter.tree_section("Risk Metrics", TelegramFormatter.WARNING)
-        msg += TelegramFormatter.tree_item("Max DD", f"{stats['max_dd_pct']:.1f}%")
-        msg += TelegramFormatter.tree_item("Avg Win", f"${stats['avg_win']:,.0f}")
-        msg += TelegramFormatter.tree_item("Avg Loss", f"${stats['avg_loss']:,.0f}")
+            summary = {
+                'initial_balance': INITIAL_BALANCE,
+                'net_pnl': stats['net_pnl'],
+                'return_pct': (stats['net_pnl'] / INITIAL_BALANCE) * 100,
+                'profit_factor': stats['profit_factor'],
+                'win_rate': stats['win_rate'],
+                'total_trades': stats['total_trades'],
+                'winners': stats['winners'],
+                'losers': stats['losers'],
+                'avg_win': stats['avg_win'],
+                'avg_loss': stats['avg_loss'],
+                'losing_months': stats['losing_months'],
+                'max_drawdown': stats.get('max_dd', 0),
+            }
 
-        # Losing months
-        if stats['losing_months'] == 0:
-            msg += TelegramFormatter.tree_item("Losing Months",
-                f"{TelegramFormatter.CHECK} 0/{stats['total_months']} (ZERO!)", last=True)
-        else:
-            msg += TelegramFormatter.tree_item("Losing Months",
-                f"{TelegramFormatter.CROSS} {stats['losing_months']}/{stats['total_months']}", last=True)
+            # Generate image
+            generator = BacktestReportGenerator(output_dir="reports")
+            image_path = generator.generate_telegram_summary_image(
+                summary=summary,
+                monthly_stats=monthly_stats,
+                filename=f"backtest_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+            )
 
-        # Target check
-        msg += "\n<b>Targets:</b>\n"
-        msg += f"{TelegramFormatter.CHECK if stats['net_pnl'] >= 5000 else TelegramFormatter.CROSS} Profit >= $5K\n"
-        msg += f"{TelegramFormatter.CHECK if stats['profit_factor'] >= 2.0 else TelegramFormatter.CROSS} PF >= 2.0\n"
-        msg += f"{TelegramFormatter.CHECK if stats['losing_months'] == 0 else TelegramFormatter.CROSS} ZERO losing months"
+            if image_path:
+                # Send image with caption
+                caption = (
+                    f"<b>SURGE-WSI v6.4 GBPUSD Backtest</b>\n"
+                    f"Period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}\n\n"
+                    f"{'✅' if stats['net_pnl'] >= 5000 else '❌'} Profit: ${stats['net_pnl']:+,.0f}\n"
+                    f"{'✅' if stats['profit_factor'] >= 2.0 else '❌'} PF: {stats['profit_factor']:.2f}\n"
+                    f"{'✅' if stats['losing_months'] == 0 else '❌'} Losing Months: {stats['losing_months']}/13"
+                )
+                await telegram.send_photo(image_path, caption=caption)
+                print(f"\n[TELEGRAM] Report image sent: {image_path}")
 
-        await telegram.send(msg)
+            # Generate and send PDF
+            pdf_path = generator.generate_pdf_report(
+                trades=trades_data,
+                monthly_stats=monthly_stats,
+                summary=summary,
+                filename=f"backtest_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            )
+            if pdf_path:
+                await telegram.send_document(pdf_path, caption="📄 <b>Full Backtest Report (PDF)</b>")
+                print(f"[TELEGRAM] PDF report sent: {pdf_path}")
+
+        except Exception as img_error:
+            print(f"[TELEGRAM] Image generation failed: {img_error}, sending text instead")
+
+            # Fallback: Send text report
+            msg = TelegramFormatter.tree_header("BACKTEST RESULTS", "📊")
+            msg += f"<b>H1 v6.4 GBPUSD - Triple-Layer Quality</b>\n"
+            msg += f"Period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}\n\n"
+
+            msg += TelegramFormatter.tree_section("Performance", TelegramFormatter.CHART)
+            msg += TelegramFormatter.tree_item("Total Trades", str(stats['total_trades']))
+            msg += TelegramFormatter.tree_item("Win Rate", f"{stats['win_rate']:.1f}%")
+            msg += TelegramFormatter.tree_item("Profit Factor", f"{stats['profit_factor']:.2f}", last=True)
+
+            msg += TelegramFormatter.tree_section("Profit/Loss", TelegramFormatter.MONEY)
+            pnl_emoji = TelegramFormatter.CHECK if stats['net_pnl'] >= 0 else TelegramFormatter.CROSS
+            msg += TelegramFormatter.tree_item("Net P/L", f"{pnl_emoji} ${stats['net_pnl']:+,.0f}")
+            msg += TelegramFormatter.tree_item("Return", f"{(stats['net_pnl']/INITIAL_BALANCE)*100:+.1f}%", last=True)
+
+            msg += "\n<b>Targets:</b>\n"
+            msg += f"{'✅' if stats['net_pnl'] >= 5000 else '❌'} Profit >= $5K\n"
+            msg += f"{'✅' if stats['profit_factor'] >= 2.0 else '❌'} PF >= 2.0\n"
+            msg += f"{'✅' if stats['losing_months'] == 0 else '❌'} ZERO losing months"
+
+            await telegram.send(msg)
 
         # ============================================================
-        # MESSAGE 2: Monthly + Market Condition (Same pre block)
+        # MESSAGE 2: Monthly breakdown (compact text)
         # ============================================================
         msg2 = "<pre>"
         msg2 += f"📅 MONTHLY BREAKDOWN\n"
@@ -712,20 +1188,6 @@ async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats
             month_str = f"{year}-{mon:02d}"
             msg2 += f"{month_str:<9} ${pnl:>+7,.0f} {tradeable:>3}% +{adj:<2} {status}\n"
 
-        msg2 += f"\n🎯 BY MARKET CONDITION\n"
-        msg2 += f"{'Condition':<11} {'N':>4} {'WR':>4} {'P/L':>10}\n"
-        msg2 += f"{'-'*11} {'-'*4} {'-'*4} {'-'*10}\n"
-
-        for cond in ['GOOD', 'NORMAL', 'CAUTION', 'POOR_MONTH', 'BAD']:
-            cond_trades = [t for t in trades if t.market_condition == cond]
-            if cond_trades:
-                wins = len([t for t in cond_trades if t.pnl > 0])
-                total = len(cond_trades)
-                wr = wins / total * 100
-                net = sum(t.pnl for t in cond_trades)
-                status = "✓" if net >= 0 else "✗"
-                msg2 += f"{cond:<11} {total:>4} {wr:>3.0f}% ${net:>+8,.0f} {status}\n"
-
         msg2 += "</pre>"
 
         await telegram.send(msg2)
@@ -736,22 +1198,47 @@ async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats
         print(f"\n[TELEGRAM] Failed to send: {e}")
 
 
-def print_results(stats: dict, trades: List[Trade], condition_stats: dict):
+def print_results(stats: dict, trades: List[Trade], condition_stats: dict, skip_stats: dict = None):
     print(f"\n{'='*70}")
-    print(f"BACKTEST RESULTS - H1 v6.4 GBPUSD DUAL-LAYER QUALITY")
+    print(f"BACKTEST RESULTS - H1 v6.4 GBPUSD TRIPLE-LAYER QUALITY")
     print(f"{'='*70}")
 
-    print(f"\n[DUAL-LAYER QUALITY CONFIGURATION]")
+    print(f"\n[TRIPLE-LAYER QUALITY CONFIGURATION]")
     print(f"{'-'*50}")
     print(f"  Layer 1 - Monthly Profile (from market analysis):")
-    print(f"    tradeable < 60%: +15 quality requirement")
-    print(f"    tradeable < 70%: +10 quality requirement")
-    print(f"    tradeable < 75%: +5 quality requirement")
+    print(f"    tradeable < 30%: +50 quality (NO TRADE)")
+    print(f"    tradeable < 40%: +35 quality (HALT)")
+    print(f"    tradeable < 50%: +25 quality (extreme)")
+    print(f"    tradeable < 60%: +15 quality (very poor)")
+    print(f"    tradeable < 70%: +10 quality (below avg)")
+    print(f"    tradeable < 75%: +5 quality (slight)")
     print(f"  Layer 2 - Technical (ATR stability, efficiency, trend):")
     print(f"    GOOD market: base quality = {MIN_QUALITY_GOOD}")
     print(f"    NORMAL market: base quality = {BASE_QUALITY}")
     print(f"    BAD market: base quality = {MAX_QUALITY_BAD}")
-    print(f"  Combined = Layer1 + Layer2")
+    print(f"  Layer 3 - Intra-Month Dynamic (OPTIMIZED):")
+    print(f"    Monthly loss < ${MONTHLY_LOSS_THRESHOLD_1}: +5 quality")
+    print(f"    Monthly loss < ${MONTHLY_LOSS_THRESHOLD_2}: +10 quality")
+    print(f"    Monthly loss < ${MONTHLY_LOSS_THRESHOLD_3}: +15 quality")
+    print(f"    Monthly loss < ${MONTHLY_LOSS_STOP}: STOP trading")
+    print(f"    {CONSECUTIVE_LOSS_THRESHOLD}+ consecutive losses: +5 quality")
+    print(f"    {CONSECUTIVE_LOSS_MAX}+ consecutive losses: STOP for day")
+    if PATTERN_FILTER_ENABLED:
+        print(f"  Layer 4 - Pattern-Based Filter:")
+        print(f"    Warmup: first {WARMUP_TRADES} trades (observe only)")
+        print(f"    Rolling WR halt: <{ROLLING_WR_HALT*100:.0f}% (window={ROLLING_WINDOW})")
+        print(f"    Rolling WR caution: <{ROLLING_WR_CAUTION*100:.0f}% ({CAUTION_SIZE_MULT*100:.0f}% size)")
+        print(f"    Both directions fail: {BOTH_DIRECTIONS_FAIL_THRESHOLD}+ each = HALT")
+        print(f"    Recovery: need {RECOVERY_WIN_REQUIRED} win, {RECOVERY_SIZE_MULT*100:.0f}% size")
+    print(f"  Combined = Layer1 + Layer2 + Layer3 + Layer4")
+
+    if skip_stats:
+        print(f"\n[PROTECTION STATS]")
+        print(f"{'-'*50}")
+        print(f"  Month circuit breaker: {skip_stats.get('MONTH_STOPPED', 0)}")
+        print(f"  Day stop: {skip_stats.get('DAY_STOPPED', 0)}")
+        print(f"  Dynamic quality adj: {skip_stats.get('DYNAMIC_ADJ', 0)}")
+        print(f"  Pattern filter stops: {skip_stats.get('PATTERN_STOPPED', 0)}")
 
     print(f"\n[MARKET CONDITIONS OBSERVED]")
     print(f"{'-'*50}")
@@ -842,16 +1329,18 @@ def print_results(stats: dict, trades: List[Trade], condition_stats: dict):
 
 async def main():
     timeframe = "H1"
-    start = datetime(2024, 1, 1, tzinfo=timezone.utc)
-    end = datetime(2025, 1, 15, tzinfo=timezone.utc)
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2026, 1, 31, tzinfo=timezone.utc)
 
-    print(f"SURGE-WSI H1 v6.4 GBPUSD - DUAL-LAYER QUALITY FILTER")
+    print(f"SURGE-WSI H1 v6.4 GBPUSD - TRIPLE-LAYER QUALITY FILTER")
     print(f"{'='*70}")
-    print(f"Dual-Layer Quality Filter:")
+    print(f"Triple-Layer Quality Filter:")
     print(f"  Layer 1: Monthly profile (from market analysis)")
     print(f"  Layer 2: Real-time technical indicators")
-    print(f"  Combined = Higher of both layers")
+    print(f"  Layer 3: Intra-month dynamic risk (adaptive)")
+    print(f"  Combined = Layer1 + Layer2 + Layer3")
     print(f"{'='*70}")
+    print(f"Vector Features: {'ENABLED' if USE_VECTOR_FEATURES and VECTOR_AVAILABLE else 'DISABLED'}")
 
     print(f"\nFetching {SYMBOL} {timeframe} data...")
 
@@ -875,15 +1364,15 @@ async def main():
         elif 'close' in col_lower:
             col_map['close'] = col
 
-    print(f"\nRunning backtest with DUAL-LAYER quality filter...")
-    trades, max_dd, condition_stats = run_backtest(df, col_map)
+    print(f"\nRunning backtest with TRIPLE-LAYER quality filter...")
+    trades, max_dd, condition_stats, skip_stats = run_backtest(df, col_map)
 
     if not trades:
         print("No trades executed")
         return
 
     stats = calculate_stats(trades, max_dd)
-    print_results(stats, trades, condition_stats)
+    print_results(stats, trades, condition_stats, skip_stats)
 
     # Send to Telegram
     await send_telegram_report(stats, trades, condition_stats, start, end)
