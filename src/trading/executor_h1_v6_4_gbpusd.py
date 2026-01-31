@@ -144,6 +144,12 @@ HOUR_MULTIPLIERS = {
 }
 
 # ============================================================
+# ENTRY SIGNAL CONFIG (v6.7)
+# ============================================================
+USE_ORDER_BLOCK = True       # Primary entry: Order Block detection
+USE_EMA_PULLBACK = True      # Secondary entry: EMA Pullback (v6.7)
+
+# ============================================================
 # SESSION-BASED HOUR+POI FILTER (v6.8 - from Session Analysis)
 # Skip underperforming Hour+POI combinations
 # ============================================================
@@ -155,7 +161,7 @@ SKIP_HOURS = [11]
 # ORDER_BLOCK performs poorly at these hours
 SKIP_ORDER_BLOCK_HOURS = [8, 16]  # 8.3% and 14.3% WR
 
-# EMA_PULLBACK performs poorly during NY Overlap (for future use)
+# EMA_PULLBACK performs poorly during NY Overlap
 SKIP_EMA_PULLBACK_HOURS = [13, 14]  # 18-28% WR
 
 
@@ -778,6 +784,149 @@ class H1V64GBPUSDExecutor:
         """Calculate EMA"""
         return series.ewm(span=period, adjust=False).mean()
 
+    def calculate_rsi(self, series: pd.Series, period: int = 14) -> pd.Series:
+        """Calculate RSI"""
+        delta = series.diff()
+        gain = delta.where(delta > 0, 0.0)
+        loss = (-delta).where(delta < 0, 0.0)
+        avg_gain = gain.rolling(window=period).mean()
+        avg_loss = loss.rolling(window=period).mean()
+        rs = avg_gain / (avg_loss + 1e-10)
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
+
+    def calculate_adx(self, df: pd.DataFrame, col_map: dict, period: int = 14) -> pd.Series:
+        """Calculate ADX"""
+        h, l, c = col_map['high'], col_map['low'], col_map['close']
+        high = df[h]
+        low = df[l]
+        close = df[c]
+
+        plus_dm = (high - high.shift(1)).clip(lower=0)
+        minus_dm = (low.shift(1) - low).clip(lower=0)
+
+        tr = pd.concat([
+            high - low,
+            abs(high - close.shift(1)),
+            abs(low - close.shift(1))
+        ], axis=1).max(axis=1)
+
+        atr = tr.rolling(period).mean()
+        plus_di = 100 * (plus_dm.rolling(period).mean() / (atr + 1e-10))
+        minus_di = 100 * (minus_dm.rolling(period).mean() / (atr + 1e-10))
+
+        dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di + 1e-10)
+        adx = dx.rolling(period).mean()
+        return adx
+
+    def detect_ema_pullback(self, df: pd.DataFrame, col_map: dict,
+                            atr_series: pd.Series, min_quality: float) -> List[dict]:
+        """
+        Detect EMA Pullback entry signals (v6.7)
+
+        Criteria:
+        - BUY: close > EMA20 > EMA50 (uptrend), price near EMA20, bullish candle
+        - SELL: close < EMA20 < EMA50 (downtrend), price near EMA20, bearish candle
+        - ADX > 20 (trend present)
+        - RSI between 30-70 (room for momentum)
+        - Body ratio > 0.4 (decent candle)
+        """
+        pois = []
+        if len(df) < 50:
+            return pois
+
+        o, h, l, c = col_map['open'], col_map['high'], col_map['low'], col_map['close']
+
+        # Calculate indicators
+        ema20 = self.calculate_ema(df[c], 20)
+        ema50 = self.calculate_ema(df[c], 50)
+        rsi = self.calculate_rsi(df[c], 14)
+        adx = self.calculate_adx(df, col_map, 14)
+
+        # Check current bar (last bar)
+        i = len(df) - 1
+        bar = df.iloc[i]
+
+        current_close = bar[c]
+        current_open = bar[o]
+        current_high = bar[h]
+        current_low = bar[l]
+        current_ema20 = ema20.iloc[i]
+        current_ema50 = ema50.iloc[i]
+        current_rsi = rsi.iloc[i]
+        current_adx = adx.iloc[i]
+        current_atr = atr_series.iloc[i] if i < len(atr_series) else 0
+
+        # Skip if indicators are NaN
+        if pd.isna(current_ema20) or pd.isna(current_ema50) or pd.isna(current_rsi) or pd.isna(current_adx):
+            return pois
+
+        # Calculate body ratio
+        total_range = current_high - current_low
+        if total_range < 0.0003:
+            return pois
+        body = abs(current_close - current_open)
+        body_ratio = body / total_range
+
+        # Filter criteria
+        if body_ratio < 0.4:
+            return pois
+        if current_adx < 20:
+            return pois
+        if not (30 <= current_rsi <= 70):
+            return pois
+        if current_atr < MIN_ATR or current_atr > MAX_ATR:
+            return pois
+
+        # EMA20 proximity - within 1.5 ATR
+        atr_distance = current_atr * PIP_SIZE * 1.5
+
+        # BUY: Uptrend pullback
+        is_bullish = current_close > current_open
+        if is_bullish and current_close > current_ema20 > current_ema50:
+            distance_to_ema = current_low - current_ema20
+            if distance_to_ema <= atr_distance:
+                touch_quality = max(0, 30 - (distance_to_ema / PIP_SIZE))
+                adx_quality = min(25, (current_adx - 15) * 1.5)
+                rsi_quality = 25 if abs(50 - current_rsi) < 20 else 15
+                body_quality = min(20, body_ratio * 30)
+
+                quality = touch_quality + adx_quality + rsi_quality + body_quality
+                quality = min(100, max(55, quality))
+
+                if quality >= min_quality:
+                    pois.append({
+                        'price': current_close,
+                        'direction': 'BUY',
+                        'quality': quality,
+                        'idx': i,
+                        'type': 'EMA_PULLBACK'
+                    })
+
+        # SELL: Downtrend pullback
+        is_bearish = current_close < current_open
+        if is_bearish and current_close < current_ema20 < current_ema50:
+            distance_to_ema = current_ema20 - current_high
+            if distance_to_ema <= atr_distance:
+                touch_quality = max(0, 30 - (distance_to_ema / PIP_SIZE))
+                adx_quality = min(25, (current_adx - 15) * 1.5)
+                rsi_quality = 25 if abs(50 - current_rsi) < 20 else 15
+                body_quality = min(20, body_ratio * 30)
+
+                quality = touch_quality + adx_quality + rsi_quality + body_quality
+                quality = min(100, max(55, quality))
+
+                if quality >= min_quality:
+                    pois.append({
+                        'price': current_close,
+                        'direction': 'SELL',
+                        'quality': quality,
+                        'idx': i,
+                        'type': 'EMA_PULLBACK'
+                    })
+
+        return pois
+
     def detect_regime(self, df: pd.DataFrame, col_map: dict) -> Tuple[Regime, float]:
         """Detect market regime using EMAs"""
         if len(df) < 50:
@@ -973,8 +1122,21 @@ class H1V64GBPUSDExecutor:
 
         logger.info(f"Market: {market_cond.label}, Quality>={dynamic_quality:.0f} (L1={market_cond.monthly_adjustment}, L3={intra_month_adj})")
 
-        # Detect POIs with dynamic quality threshold
-        pois = self.detect_order_blocks(df, col_map, dynamic_quality)
+        # Detect POIs with dynamic quality threshold (v6.7: dual entry signals)
+        pois = []
+
+        # Entry Signal 1: Order Block detection
+        if USE_ORDER_BLOCK:
+            ob_pois = self.detect_order_blocks(df, col_map, dynamic_quality)
+            for poi in ob_pois:
+                poi['type'] = 'ORDER_BLOCK'
+            pois.extend(ob_pois)
+
+        # Entry Signal 2: EMA Pullback detection (v6.7)
+        if USE_EMA_PULLBACK:
+            ema_pois = self.detect_ema_pullback(df, col_map, atr_series, dynamic_quality)
+            pois.extend(ema_pois)
+
         if not pois:
             return None
 

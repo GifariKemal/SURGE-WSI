@@ -955,10 +955,10 @@ def run_backtest(df: pd.DataFrame, col_map: dict) -> Tuple[List[Trade], float, d
             continue
 
         hour = current_time.hour
-        # v6.6.1: Skip hour 7 (0% WR in backtest)
-        if not (8 <= hour <= 11 or 13 <= hour <= 17):
+        # v6.9: Kill zone hours (Hour 7 & 11 blocked by HOUR_MULTIPLIERS=0.0)
+        if not (8 <= hour <= 10 or 13 <= hour <= 17):
             continue
-        session = "london" if 8 <= hour <= 11 else "newyork"
+        session = "london" if 8 <= hour <= 10 else "newyork"
 
         # LAYER 3: Check intra-month risk manager
         can_trade, intra_month_adj, skip_reason = risk_manager.new_trade_check(current_time)
