@@ -17,6 +17,7 @@
 //+------------------------------------------------------------------+
 input group "=== Risk Management ==="
 input double   RiskPercent = 1.0;           // Risk per trade (%)
+input double   MaxLossPercent = 0.15;       // Max Loss per trade (%) - SL_CAPPED
 input double   SL_ATR_Mult = 1.5;           // SL ATR Multiplier
 input double   TP_Ratio = 1.5;              // TP:SL Ratio
 input double   MaxLotSize = 5.0;            // Maximum Lot Size
@@ -116,7 +117,7 @@ int OnInit()
    }
 
    Print("GBPUSD H1 QuadLayer v6.9 initialized successfully");
-   Print("Risk: ", RiskPercent, "% | SL: ", SL_ATR_Mult, "x ATR | TP: ", TP_Ratio, ":1");
+   Print("Risk: ", RiskPercent, "% | Max Loss (SL_CAPPED): ", MaxLossPercent, "% | SL: ", SL_ATR_Mult, "x ATR | TP: ", TP_Ratio, ":1");
 
    return INIT_SUCCEEDED;
 }
@@ -380,7 +381,25 @@ void ExecuteTrade(int signal, double atr, double riskMult, string signalType)
    double slPips = atr / pipSize * 10 * SL_ATR_Mult;
    double tpPips = slPips * TP_Ratio;
 
-   double lotSize = NormalizeLotSize(riskAmount / (slPips * pipValue));
+   // Calculate initial lot size based on risk amount
+   double lotSize = riskAmount / (slPips * pipValue);
+
+   // SL_CAPPED: Cap the lot size based on MaxLossPercent (0.15%)
+   // This ensures max loss per trade is capped regardless of SL distance
+   double maxAllowedLoss = balance * (MaxLossPercent / 100.0);
+   double potentialLoss = lotSize * slPips * pipValue;
+
+   if(potentialLoss > maxAllowedLoss)
+   {
+      // Reduce lot size to cap the max loss
+      double cappedLotSize = maxAllowedLoss / (slPips * pipValue);
+      Print("SL_CAPPED: Reducing lot from ", DoubleToString(lotSize, 2),
+            " to ", DoubleToString(cappedLotSize, 2),
+            " | Max Loss: $", DoubleToString(maxAllowedLoss, 2));
+      lotSize = cappedLotSize;
+   }
+
+   lotSize = NormalizeLotSize(lotSize);
 
    double price, sl, tp;
 
