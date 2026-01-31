@@ -54,7 +54,7 @@ PIP_VALUE = 10.0                # $10 per pip per standard lot
 PIP_SIZE = 0.0001               # GBPUSD pip size
 MAX_LOT = 5.0
 MIN_ATR = 8.0                   # Min 8 pips ATR
-MAX_ATR = 30.0                  # Max 30 pips ATR
+MAX_ATR = 25.0                  # Max 25 pips ATR (v6.9: synced with QuadLayer)
 
 # Dynamic Quality Thresholds (Layer 2)
 BASE_QUALITY = 65
