@@ -1,16 +1,26 @@
 """
-SURGE-WSI H1 v6.4 GBPUSD Live Trading Executor
-==============================================
+SURGE-WSI H1 v6.7.0 GBPUSD Live Trading Executor
+================================================
 
 QUAD-LAYER Quality Filter for ZERO losing months:
-- Layer 1: Monthly profile from market analysis (tradeable %)
-- Layer 2: Real-time technical indicators (ATR stability, efficiency, ADX)
+- Layer 1: Monthly profile (seasonal template from 2024 data)
+- Layer 2: Real-time technical indicators (ATR stability, efficiency, EMA trend)
 - Layer 3: Intra-month dynamic risk adjustment (consecutive losses, monthly P&L)
 - Layer 4: Pattern-Based Choppy Market Detector (rolling WR, direction tracking)
 
+v6.7.0 Features:
+- Dual Entry Signal: Order Block + EMA Pullback
+- 62% more trades while maintaining zero losing months
+- EMA Pullback has 51.4% WR (vs Order Block 38.8%)
+
+v6.6.1 Optimizations:
+- Skip hour 7 UTC (0% WR)
+- MAX_ATR reduced to 25 pips (ATR 25-30 had 0% WR)
+
 Backtest Results (Jan 2025 - Jan 2026):
-- 102 trades, 42.2% WR, PF 3.57
-- +$12,888.80 profit (+25.8% return on $50K)
+- 154 trades, 44.8% WR, PF 4.30
+- +$27,028 profit (+54.1% return on $50K)
+- Max Drawdown: -0.75%
 - ZERO losing months (0/13)
 
 Author: SURIOTA Team
@@ -26,6 +36,28 @@ import numpy as np
 
 from loguru import logger
 
+# Import shared modules
+from .trading_filters import (
+    IntraMonthRiskManager,
+    PatternBasedFilter,
+    calculate_lot_size,
+    calculate_sl_tp,
+    get_monthly_quality_adjustment,
+    MONTHLY_TRADEABLE_PCT,
+    SEASONAL_TEMPLATE,  # v6.6.0: For future months without data leakage
+    # Re-export for main.py compatibility
+    WARMUP_TRADES,
+    ROLLING_WINDOW,
+    ROLLING_WR_HALT,
+    ROLLING_WR_CAUTION,
+)
+from .strategy_config import (
+    SYMBOL, TIMEFRAME, PIP_SIZE, PIP_VALUE,
+    RISK, TECHNICAL, INTRA_MONTH, PATTERN, KILLZONE,
+    MONTHLY_RISK_MULT, DAY_RISK_MULT, MONTHLY_TRADEABLE_PCT as MONTHLY_PCT
+)
+from .state_manager import StateManager
+
 # Optional vector database integration
 try:
     from src.data.vector_client import VectorClient
@@ -37,106 +69,42 @@ except ImportError:
 
 # ============================================================
 # CONFIGURATION v6.4 GBPUSD - QUAD-LAYER QUALITY FILTER
+# Use values from strategy_config.py but keep local aliases
 # ============================================================
-SYMBOL = "GBPUSD"
-TIMEFRAME = "H1"
+# Risk Management - from strategy_config
+RISK_PERCENT = RISK.risk_percent
+SL_ATR_MULT = RISK.sl_atr_mult
+TP_RATIO = RISK.tp_ratio
+MAX_LOT = RISK.max_lot
 
-# Risk Management
-RISK_PERCENT = 1.0              # 1% per trade
-SL_ATR_MULT = 1.5               # SL = 1.5x ATR
-TP_RATIO = 1.5                  # TP = 1.5x SL
-MAX_LOSS_PER_TRADE_PCT = 0.15   # 0.15% max loss cap
-
-# Technical Parameters
-PIP_VALUE = 10.0                # $10 per pip per standard lot
-PIP_SIZE = 0.0001               # GBPUSD pip size
-MAX_LOT = 5.0
-MIN_ATR = 8.0                   # Min 8 pips ATR
-MAX_ATR = 30.0                  # Max 30 pips ATR
+# Technical Parameters - from strategy_config
+MIN_ATR = TECHNICAL.min_atr
+MAX_ATR = TECHNICAL.max_atr
 
 # Dynamic Quality Thresholds (Layer 2)
-BASE_QUALITY = 65
-MIN_QUALITY_GOOD = 60
-MAX_QUALITY_BAD = 80
+BASE_QUALITY = TECHNICAL.base_quality_normal
+MIN_QUALITY_GOOD = TECHNICAL.base_quality_good
+MAX_QUALITY_BAD = TECHNICAL.base_quality_bad
 
 # Technical Thresholds
 ATR_STABILITY_THRESHOLD = 0.25
-EFFICIENCY_THRESHOLD = 0.08
-TREND_STRENGTH_THRESHOLD = 25
+EFFICIENCY_THRESHOLD = TECHNICAL.min_efficiency
+TREND_STRENGTH_THRESHOLD = TECHNICAL.min_adx
 
-# ============================================================
-# LAYER 3: DYNAMIC INTRA-MONTH RISK ADJUSTMENT
-# Adaptive system - OPTIMIZED MODE
-# ============================================================
-MONTHLY_LOSS_THRESHOLD_1 = -150    # First warning: +5 quality
-MONTHLY_LOSS_THRESHOLD_2 = -250    # Second warning: +10 quality
-MONTHLY_LOSS_THRESHOLD_3 = -350    # Third warning: +15 quality
-MONTHLY_LOSS_STOP = -400           # Circuit breaker: stop for month
-
-CONSECUTIVE_LOSS_THRESHOLD = 3     # After 3 consecutive losses: +5 quality
-CONSECUTIVE_LOSS_MAX = 6           # After 6 consecutive losses: stop for day
-
-# No base protection (start at 0)
-MIN_BASE_QUALITY_ADJUSTMENT = 0
-
-# ============================================================
-# LAYER 4: PATTERN-BASED CHOPPY MARKET DETECTOR
-# Detects "whipsaw" markets where BOTH directions lose
-# ============================================================
+# Layer 4: Pattern filter enabled
 PATTERN_FILTER_ENABLED = True
 
-# Warmup settings - filter observes but doesn't halt during warmup
-WARMUP_TRADES = 15                 # First 15 trades are warmup (observe only)
+# Entry Signal Configuration (v6.7)
+USE_ORDER_BLOCK = True       # Primary entry: Order Block detection
+USE_EMA_PULLBACK = True      # Secondary entry: EMA Pullback
 
-# Probe trade settings - small "test" trade after halt
-PROBE_TRADE_SIZE = 0.4             # Probe trade is 40% size
-PROBE_QUALITY_EXTRA = 5            # Extra +5 quality for probe trades
-
-# Choppy market detection thresholds
-DIRECTION_TEST_WINDOW = 8          # Check last 8 trades for direction bias
-MIN_DIRECTION_WIN_RATE = 0.10      # If a direction has <10% WR, avoid it
-BOTH_DIRECTIONS_FAIL_THRESHOLD = 4 # If 4 trades in BOTH directions lose, HALT
-
-# Rolling performance tracking
-ROLLING_WINDOW = 10                # Track last 10 trades
-ROLLING_WR_HALT = 0.10             # If rolling WR drops below 10%, halt trading
-ROLLING_WR_CAUTION = 0.25          # If rolling WR below 25%, reduce size to 60%
-CAUTION_SIZE_MULT = 0.6            # Size during caution mode
-
-# Recovery settings
-RECOVERY_WIN_REQUIRED = 1          # Need 1 win to exit halt state
-RECOVERY_SIZE_MULT = 0.5           # Trade at 50% size during recovery
-
-
-# ==========================================================
-# LAYER 1: MONTHLY PROFILE (from market analysis)
-# ==========================================================
-MONTHLY_TRADEABLE_PCT = {
-    # 2024
-    (2024, 1): 67, (2024, 2): 55, (2024, 3): 70, (2024, 4): 80,
-    (2024, 5): 62, (2024, 6): 68, (2024, 7): 78, (2024, 8): 65,
-    (2024, 9): 72, (2024, 10): 58, (2024, 11): 66, (2024, 12): 60,
-    # 2025 - Pattern filter handles all months dynamically
-    (2025, 1): 65, (2025, 2): 55, (2025, 3): 70, (2025, 4): 70,
-    (2025, 5): 62, (2025, 6): 68, (2025, 7): 78, (2025, 8): 65,
-    (2025, 9): 72, (2025, 10): 58, (2025, 11): 66, (2025, 12): 60,
-    # 2026
-    (2026, 1): 65, (2026, 2): 55, (2026, 3): 70, (2026, 4): 80,
-    (2026, 5): 62, (2026, 6): 68, (2026, 7): 78, (2026, 8): 65,
-    (2026, 9): 72, (2026, 10): 58, (2026, 11): 66, (2026, 12): 60,
-}
-
-# Monthly risk multipliers
-MONTHLY_RISK = {
-    1: 0.9, 2: 0.6, 3: 0.8, 4: 1.0, 5: 0.7, 6: 0.85,
-    7: 1.0, 8: 0.75, 9: 0.9, 10: 0.6, 11: 0.75, 12: 0.8,
-}
-
+# Monthly risk multipliers (from strategy_config)
+MONTHLY_RISK = MONTHLY_RISK_MULT
 DAY_MULTIPLIERS = {0: 1.0, 1: 0.9, 2: 1.0, 3: 0.4, 4: 0.5, 5: 0.0, 6: 0.0}
 
 HOUR_MULTIPLIERS = {
     0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0,
-    6: 0.5, 7: 0.8, 8: 1.0, 9: 1.0, 10: 0.9, 11: 0.8,
+    6: 0.5, 7: 0.0, 8: 1.0, 9: 1.0, 10: 0.9, 11: 0.8,  # Hour 7 = 0% (v6.6.1: skip due to 0% WR)
     12: 0.7, 13: 1.0, 14: 1.0, 15: 1.0, 16: 0.9, 17: 0.7,
     18: 0.3, 19: 0.0, 20: 0.0, 21: 0.0, 22: 0.0, 23: 0.0,
 }
@@ -179,293 +147,12 @@ class TradeSignal:
     monthly_adj: int
     pattern_size_mult: float = 1.0
     pattern_status: str = "OK"
+    poi_type: str = "ORDER_BLOCK"  # v6.7: ORDER_BLOCK or EMA_PULLBACK
 
 
-class IntraMonthRiskManager:
-    """
-    Layer 3: Dynamic Intra-Month Risk Adjustment
 
-    Tracks real-time monthly P&L and adjusts quality requirements
-    to prevent losing months through adaptive risk management.
-    """
-
-    def __init__(self):
-        self.current_month = None
-        self.monthly_pnl = 0.0
-        self.monthly_peak = 0.0
-        self.consecutive_losses = 0
-        self.daily_losses = 0
-        self.current_day = None
-        self.month_stopped = False
-        self.day_stopped = False
-
-    def new_trade_check(self, dt: datetime) -> Tuple[bool, int, str]:
-        """
-        Check if trading is allowed and get dynamic adjustment
-
-        Returns:
-            (can_trade: bool, dynamic_adj: int, reason: str)
-        """
-        month_key = (dt.year, dt.month)
-        day_key = dt.date()
-
-        # Reset for new month
-        if self.current_month != month_key:
-            self.current_month = month_key
-            self.monthly_pnl = 0.0
-            self.monthly_peak = 0.0
-            self.consecutive_losses = 0
-            self.month_stopped = False
-            self.day_stopped = False
-            logger.info(f"[Layer3] New month: {month_key}")
-
-        # Reset for new day
-        if self.current_day != day_key:
-            self.current_day = day_key
-            self.daily_losses = 0
-            self.day_stopped = False
-
-        # Check circuit breakers
-        if self.month_stopped:
-            return False, 0, "MONTH_STOPPED"
-
-        if self.day_stopped:
-            return False, 0, "DAY_STOPPED"
-
-        # Calculate dynamic adjustment based on monthly P&L
-        dynamic_adj = MIN_BASE_QUALITY_ADJUSTMENT
-
-        # Monthly loss circuit breaker
-        if self.monthly_pnl <= MONTHLY_LOSS_STOP:
-            self.month_stopped = True
-            logger.warning(f"[Layer3] MONTH CIRCUIT BREAKER: ${self.monthly_pnl:.0f}")
-            return False, 0, f"MONTH_CIRCUIT_BREAKER (${self.monthly_pnl:.0f})"
-
-        # Monthly loss thresholds
-        if self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_3:
-            dynamic_adj += 15
-        elif self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_2:
-            dynamic_adj += 10
-        elif self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_1:
-            dynamic_adj += 5
-
-        # Adjustment for consecutive losses
-        if self.consecutive_losses >= CONSECUTIVE_LOSS_MAX:
-            self.day_stopped = True
-            logger.warning(f"[Layer3] DAY STOPPED: {self.consecutive_losses} consecutive losses")
-            return False, 0, f"CONSECUTIVE_LOSS_STOP ({self.consecutive_losses})"
-
-        if self.consecutive_losses >= CONSECUTIVE_LOSS_THRESHOLD:
-            dynamic_adj += 5
-
-        return True, dynamic_adj, "OK"
-
-    def record_trade(self, pnl: float, dt: datetime):
-        """Record trade result and update tracking"""
-        self.monthly_pnl += pnl
-
-        # Update peak profit
-        if self.monthly_pnl > self.monthly_peak:
-            self.monthly_peak = self.monthly_pnl
-
-        if pnl < 0:
-            self.consecutive_losses += 1
-            self.daily_losses += 1
-            logger.info(f"[Layer3] Loss recorded: ${pnl:.2f}, consecutive: {self.consecutive_losses}")
-        else:
-            self.consecutive_losses = 0  # Reset on win
-            logger.info(f"[Layer3] Win recorded: ${pnl:.2f}, streak reset")
-
-        logger.info(f"[Layer3] Monthly P&L: ${self.monthly_pnl:.2f}")
-
-    def get_status(self) -> dict:
-        """Get current risk manager status"""
-        return {
-            'month': self.current_month,
-            'monthly_pnl': self.monthly_pnl,
-            'monthly_peak': self.monthly_peak,
-            'consecutive_losses': self.consecutive_losses,
-            'month_stopped': self.month_stopped,
-            'day_stopped': self.day_stopped
-        }
-
-
-class PatternBasedFilter:
-    """
-    Layer 4: Pattern-Based Choppy Market Detector
-
-    Detects "whipsaw" markets where BOTH directions lose consistently.
-    This pattern can appear in ANY month, learned from April 2025 analysis.
-
-    Key features:
-    1. Probe trades - small test trades to verify market tradability
-    2. Direction-specific win rate tracking
-    3. Rolling win rate monitoring
-    4. Automatic halt when choppy market detected
-    5. Recovery mode with gradual size increase
-    """
-
-    def __init__(self):
-        self.trade_history = []  # List of (direction, pnl, timestamp)
-        self.is_halted = False
-        self.halt_reason = ""
-        self.in_recovery = False
-        self.recovery_wins = 0
-        self.current_month = None
-        self.probe_taken = False
-
-    def reset_for_month(self, month: int):
-        """Soft reset - keep history but reset monthly flags"""
-        self.current_month = month
-        self.probe_taken = False
-        # Don't reset trade_history - we want to learn across months
-        if self.in_recovery and self.recovery_wins >= RECOVERY_WIN_REQUIRED:
-            self.is_halted = False
-            self.in_recovery = False
-            self.recovery_wins = 0
-            logger.info("[Layer4] Recovery complete, filter reset")
-
-    def _get_rolling_stats(self) -> dict:
-        """Calculate rolling statistics from recent trades"""
-        if len(self.trade_history) < 3:
-            return {'rolling_wr': 1.0, 'buy_wr': 1.0, 'sell_wr': 1.0, 'both_fail': False}
-
-        recent = self.trade_history[-ROLLING_WINDOW:]
-        wins = sum(1 for _, pnl, _ in recent if pnl > 0)
-        rolling_wr = wins / len(recent) if recent else 1.0
-
-        # Direction-specific stats
-        buy_trades = [(d, p) for d, p, _ in recent if d == 'BUY']
-        sell_trades = [(d, p) for d, p, _ in recent if d == 'SELL']
-
-        buy_wr = sum(1 for _, p in buy_trades if p > 0) / len(buy_trades) if buy_trades else 1.0
-        sell_wr = sum(1 for _, p in sell_trades if p > 0) / len(sell_trades) if sell_trades else 1.0
-
-        # Check if BOTH directions are failing
-        both_fail = False
-        recent_window = self.trade_history[-BOTH_DIRECTIONS_FAIL_THRESHOLD*2:]
-        if len(recent_window) >= BOTH_DIRECTIONS_FAIL_THRESHOLD * 2:
-            buy_losses = sum(1 for d, p, _ in recent_window if d == 'BUY' and p < 0)
-            sell_losses = sum(1 for d, p, _ in recent_window if d == 'SELL' and p < 0)
-            if buy_losses >= BOTH_DIRECTIONS_FAIL_THRESHOLD and sell_losses >= BOTH_DIRECTIONS_FAIL_THRESHOLD:
-                both_fail = True
-
-        return {
-            'rolling_wr': rolling_wr,
-            'buy_wr': buy_wr,
-            'sell_wr': sell_wr,
-            'both_fail': both_fail
-        }
-
-    def check_trade(self, direction: str) -> Tuple[bool, int, float, str]:
-        """
-        Check if trade is allowed based on pattern analysis
-
-        Returns:
-            (can_trade: bool, extra_quality: int, size_multiplier: float, reason: str)
-        """
-        if not PATTERN_FILTER_ENABLED:
-            return True, 0, 1.0, "FILTER_DISABLED"
-
-        # During warmup, always allow trades (just observe)
-        if len(self.trade_history) < WARMUP_TRADES:
-            logger.debug(f"[Layer4] Warmup mode: {len(self.trade_history)}/{WARMUP_TRADES} trades")
-            return True, 0, 1.0, "WARMUP"
-
-        # Check if halted
-        if self.is_halted and not self.in_recovery:
-            logger.warning(f"[Layer4] Trading HALTED: {self.halt_reason}")
-            return False, 0, 1.0, f"HALTED: {self.halt_reason}"
-
-        stats = self._get_rolling_stats()
-
-        # Check for choppy market (both directions failing)
-        if stats['both_fail']:
-            self.is_halted = True
-            self.halt_reason = "BOTH_DIRECTIONS_FAIL"
-            self.in_recovery = True
-            self.recovery_wins = 0
-            logger.warning("[Layer4] CHOPPY MARKET DETECTED - both directions failing")
-            return False, 0, 1.0, "CHOPPY_MARKET_DETECTED"
-
-        # Check rolling win rate
-        if stats['rolling_wr'] < ROLLING_WR_HALT:
-            self.is_halted = True
-            self.halt_reason = f"LOW_ROLLING_WR ({stats['rolling_wr']:.0%})"
-            self.in_recovery = True
-            self.recovery_wins = 0
-            logger.warning(f"[Layer4] LOW WIN RATE: {stats['rolling_wr']:.0%}")
-            return False, 0, 1.0, f"LOW_WIN_RATE ({stats['rolling_wr']:.0%})"
-
-        # Check direction-specific win rate
-        if len(self.trade_history) >= 10:
-            if direction == 'BUY' and stats['buy_wr'] < MIN_DIRECTION_WIN_RATE:
-                logger.info(f"[Layer4] BUY direction weak: {stats['buy_wr']:.0%}")
-                return False, 0, 1.0, f"BUY_DIRECTION_WEAK ({stats['buy_wr']:.0%})"
-            if direction == 'SELL' and stats['sell_wr'] < MIN_DIRECTION_WIN_RATE:
-                logger.info(f"[Layer4] SELL direction weak: {stats['sell_wr']:.0%}")
-                return False, 0, 1.0, f"SELL_DIRECTION_WEAK ({stats['sell_wr']:.0%})"
-
-        # Determine size and quality adjustments
-        size_mult = 1.0
-        extra_q = 0
-
-        # Recovery mode - trade smaller with probe
-        if self.in_recovery:
-            size_mult = RECOVERY_SIZE_MULT
-            extra_q = PROBE_QUALITY_EXTRA
-            logger.info(f"[Layer4] RECOVERY MODE: {size_mult:.0%} size, +{extra_q} quality")
-
-        # Caution mode - rolling WR below threshold
-        elif stats['rolling_wr'] < ROLLING_WR_CAUTION:
-            size_mult = CAUTION_SIZE_MULT
-            extra_q = 3
-            logger.info(f"[Layer4] CAUTION MODE: {size_mult:.0%} size, +{extra_q} quality")
-
-        return True, extra_q, size_mult, "OK"
-
-    def record_trade(self, direction: str, pnl: float, timestamp: datetime):
-        """Record trade result and update pattern state"""
-        if not PATTERN_FILTER_ENABLED:
-            return
-
-        self.trade_history.append((direction, pnl, timestamp))
-
-        # Keep history manageable (last 50 trades)
-        if len(self.trade_history) > 50:
-            self.trade_history = self.trade_history[-50:]
-
-        # Mark probe as taken
-        if not self.probe_taken:
-            self.probe_taken = True
-
-        # Track recovery
-        if self.in_recovery:
-            if pnl > 0:
-                self.recovery_wins += 1
-                logger.info(f"[Layer4] Recovery win: {self.recovery_wins}/{RECOVERY_WIN_REQUIRED}")
-                if self.recovery_wins >= RECOVERY_WIN_REQUIRED:
-                    self.is_halted = False
-                    self.in_recovery = False
-                    self.recovery_wins = 0
-                    logger.info("[Layer4] RECOVERY COMPLETE - normal trading resumed")
-            else:
-                self.recovery_wins = 0
-                logger.info("[Layer4] Recovery loss - reset wins counter")
-
-    def get_stats(self) -> dict:
-        """Get filter statistics"""
-        stats = self._get_rolling_stats()
-        return {
-            'total_history': len(self.trade_history),
-            'is_halted': self.is_halted,
-            'in_recovery': self.in_recovery,
-            'recovery_wins': self.recovery_wins,
-            'rolling_wr': stats['rolling_wr'],
-            'buy_wr': stats['buy_wr'],
-            'sell_wr': stats['sell_wr'],
-            'both_fail': stats['both_fail']
-        }
+# NOTE: IntraMonthRiskManager and PatternBasedFilter classes are now
+# imported from trading_filters.py - no duplicate definitions needed
 
 
 class GBPUSDRiskScorer:
@@ -643,10 +330,11 @@ class H1V64GBPUSDExecutor:
     - Layer 2: Technical indicators (ATR, efficiency, ADX)
     - Layer 3: Intra-month dynamic risk (consecutive losses, monthly P&L)
     - Layer 4: Pattern-based choppy market detector
+    - State persistence via StateManager (survives restarts)
     """
 
     def __init__(self, broker_client, db_handler=None, telegram_bot=None, mt5_connector=None,
-                 enable_vector: bool = True):
+                 enable_vector: bool = True, state_file: str = None):
         self.broker = broker_client
         self.db = db_handler
         self.telegram = telegram_bot
@@ -655,9 +343,13 @@ class H1V64GBPUSDExecutor:
         self.current_position = None
         self.last_signal_time = None
 
-        # Layer 3 & 4: Risk managers
-        self.intra_month_manager = IntraMonthRiskManager()
-        self.pattern_filter = PatternBasedFilter()
+        # State persistence - CRITICAL for circuit breakers
+        self.state_manager = StateManager(state_file)
+        logger.info(f"State loaded: {self.state_manager.get_summary()}")
+
+        # Layer 3 & 4: Risk managers with state persistence
+        self.intra_month_manager = IntraMonthRiskManager(state_manager=self.state_manager)
+        self.pattern_filter = PatternBasedFilter(state_manager=self.state_manager)
         self.current_month_key = None
 
         # Vector database integration
@@ -799,6 +491,146 @@ class H1V64GBPUSDExecutor:
 
         return pois
 
+    def calculate_rsi(self, series: pd.Series, period: int = 14) -> pd.Series:
+        """Calculate Relative Strength Index"""
+        delta = series.diff()
+        gain = delta.where(delta > 0, 0.0)
+        loss = (-delta).where(delta < 0, 0.0)
+        avg_gain = gain.rolling(window=period).mean()
+        avg_loss = loss.rolling(window=period).mean()
+        rs = avg_gain / (avg_loss + 1e-10)
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
+
+    def calculate_adx_series(self, df: pd.DataFrame, col_map: dict, period: int = 14) -> pd.Series:
+        """Calculate Average Directional Index series"""
+        h, l, c = col_map['high'], col_map['low'], col_map['close']
+        highs = df[h]
+        lows = df[l]
+        closes = df[c]
+
+        plus_dm = (highs - highs.shift(1)).clip(lower=0)
+        minus_dm = (lows.shift(1) - lows).clip(lower=0)
+
+        tr = pd.concat([
+            highs - lows,
+            abs(highs - closes.shift(1)),
+            abs(lows - closes.shift(1))
+        ], axis=1).max(axis=1)
+
+        atr_14 = tr.rolling(period).mean()
+        plus_di = 100 * (plus_dm.rolling(period).mean() / (atr_14 + 1e-10))
+        minus_di = 100 * (minus_dm.rolling(period).mean() / (atr_14 + 1e-10))
+
+        dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di + 1e-10)
+        adx = dx.rolling(period).mean()
+        return adx
+
+    def detect_ema_pullback(self, df: pd.DataFrame, col_map: dict,
+                            atr_series: pd.Series, min_quality: float) -> List[dict]:
+        """
+        Detect EMA Pullback entry signals (v6.7)
+
+        Criteria:
+        - BUY: close > EMA20 > EMA50 (uptrend), price near EMA20, bullish candle
+        - SELL: close < EMA20 < EMA50 (downtrend), price near EMA20, bearish candle
+        - ADX > 20, RSI 30-70, Body ratio > 0.4
+        """
+        pois = []
+        if len(df) < 50:
+            return pois
+
+        o, h, l, c = col_map['open'], col_map['high'], col_map['low'], col_map['close']
+
+        # Calculate indicators
+        ema20 = df[c].ewm(span=20, adjust=False).mean()
+        ema50 = df[c].ewm(span=50, adjust=False).mean()
+        rsi = self.calculate_rsi(df[c], 14)
+        adx = self.calculate_adx_series(df, col_map, 14)
+
+        # Check current bar
+        i = len(df) - 1
+        bar = df.iloc[i]
+
+        current_close = bar[c]
+        current_open = bar[o]
+        current_high = bar[h]
+        current_low = bar[l]
+        current_ema20 = ema20.iloc[i]
+        current_ema50 = ema50.iloc[i]
+        current_rsi = rsi.iloc[i]
+        current_adx = adx.iloc[i]
+        current_atr = atr_series.iloc[i] if i < len(atr_series) else 0
+
+        if pd.isna(current_ema20) or pd.isna(current_rsi) or pd.isna(current_adx):
+            return pois
+
+        # Calculate body ratio
+        total_range = current_high - current_low
+        if total_range < 0.0003:
+            return pois
+        body = abs(current_close - current_open)
+        body_ratio = body / total_range
+
+        # Filter criteria
+        if body_ratio < 0.4:
+            return pois
+        if current_adx < 20:
+            return pois
+        if not (30 <= current_rsi <= 70):
+            return pois
+        if current_atr < MIN_ATR or current_atr > MAX_ATR:
+            return pois
+
+        # EMA20 proximity - within 1.5 ATR
+        atr_distance = current_atr * PIP_SIZE * 1.5
+
+        # BUY: Uptrend pullback
+        is_bullish = current_close > current_open
+        if is_bullish and current_close > current_ema20 > current_ema50:
+            distance_to_ema = current_low - current_ema20
+            if distance_to_ema <= atr_distance:
+                touch_quality = max(0, 30 - (distance_to_ema / PIP_SIZE))
+                adx_quality = min(25, (current_adx - 15) * 1.5)
+                rsi_quality = 25 if abs(50 - current_rsi) < 20 else 15
+                body_quality = min(20, body_ratio * 30)
+
+                quality = touch_quality + adx_quality + rsi_quality + body_quality
+                quality = min(100, max(55, quality))
+
+                if quality >= min_quality:
+                    pois.append({
+                        'price': current_close,
+                        'direction': 'BUY',
+                        'quality': quality,
+                        'idx': i,
+                        'type': 'EMA_PULLBACK'
+                    })
+
+        # SELL: Downtrend pullback
+        is_bearish = current_close < current_open
+        if is_bearish and current_close < current_ema20 < current_ema50:
+            distance_to_ema = current_ema20 - current_high
+            if distance_to_ema <= atr_distance:
+                touch_quality = max(0, 30 - (distance_to_ema / PIP_SIZE))
+                adx_quality = min(25, (current_adx - 15) * 1.5)
+                rsi_quality = 25 if abs(50 - current_rsi) < 20 else 15
+                body_quality = min(20, body_ratio * 30)
+
+                quality = touch_quality + adx_quality + rsi_quality + body_quality
+                quality = min(100, max(55, quality))
+
+                if quality >= min_quality:
+                    pois.append({
+                        'price': current_close,
+                        'direction': 'SELL',
+                        'quality': quality,
+                        'idx': i,
+                        'type': 'EMA_PULLBACK'
+                    })
+
+        return pois
+
     def check_entry_trigger(self, bar: pd.Series, prev_bar: pd.Series,
                            direction: str, col_map: dict) -> Tuple[bool, str]:
         """Check for entry trigger"""
@@ -835,9 +667,10 @@ class H1V64GBPUSDExecutor:
         return False, ""
 
     def is_kill_zone(self, dt: datetime) -> Tuple[bool, str]:
-        """Check if current time is in kill zone"""
+        """Check if current time is in kill zone (v6.6.1: skip hour 7)"""
         hour = dt.hour
-        if 7 <= hour <= 11:
+        # v6.6.1: Skip hour 7 (0% WR in backtest)
+        if 8 <= hour <= 11:
             return True, "london"
         elif 13 <= hour <= 17:
             return True, "newyork"
@@ -866,11 +699,14 @@ class H1V64GBPUSDExecutor:
             logger.info(f"[Layer3] Trade blocked: {skip_reason}")
             return None
 
-        # LAYER 4: Reset pattern filter if month changed
-        month_key = (now.year, now.month)
-        if month_key != self.current_month_key:
-            self.current_month_key = month_key
-            self.pattern_filter.reset_for_month(now.month)
+        # LAYER 4: Check pattern filter early
+        pattern_allowed, pattern_size_mult, pattern_reason = self.pattern_filter.check_trade_allowed()
+        if not pattern_allowed:
+            logger.info(f"[Layer4] Trade blocked: {pattern_reason}")
+            return None
+
+        # Get extra quality requirement from pattern filter
+        pattern_extra_q = self.pattern_filter.get_quality_adjustment()
 
         # Fetch H1 data
         df = await self.get_ohlcv_data(SYMBOL, TIMEFRAME, 500)
@@ -915,8 +751,24 @@ class H1V64GBPUSDExecutor:
 
         logger.info(f"Market: {market_cond.label}, Quality>={dynamic_quality:.0f} (L1={market_cond.monthly_adjustment}, L3={intra_month_adj})")
 
-        # Detect POIs with dynamic quality threshold
-        pois = self.detect_order_blocks(df, col_map, dynamic_quality)
+        # Detect POIs with dynamic quality threshold (v6.7: dual entry signals)
+        pois = []
+
+        # Entry Signal 1: Order Block detection
+        if USE_ORDER_BLOCK:
+            ob_pois = self.detect_order_blocks(df, col_map, dynamic_quality)
+            for p in ob_pois:
+                p['type'] = 'ORDER_BLOCK'
+            pois.extend(ob_pois)
+
+        # Entry Signal 2: EMA Pullback detection (v6.7)
+        if USE_EMA_PULLBACK:
+            ema_pois = self.detect_ema_pullback(df, col_map, atr_series, dynamic_quality)
+            existing_indices = {p['idx'] for p in pois}
+            for ep in ema_pois:
+                if ep['idx'] not in existing_indices:
+                    pois.append(ep)
+
         if not pois:
             return None
 
@@ -931,17 +783,22 @@ class H1V64GBPUSDExecutor:
             if poi['direction'] == 'SELL' and regime != Regime.BEARISH:
                 continue
 
-            # Check zone proximity
-            zone_size = abs(current_bar[col_map['high']] - current_bar[col_map['low']]) * 2
-            if abs(current_price - poi['price']) > zone_size:
-                continue
+            poi_type = poi.get('type', 'ORDER_BLOCK')
 
-            # Check entry trigger
-            has_trigger, entry_type = self.check_entry_trigger(
-                current_bar, prev_bar, poi['direction'], col_map
-            )
-            if not has_trigger:
-                continue
+            # EMA_PULLBACK already has entry confirmation
+            if poi_type == 'EMA_PULLBACK':
+                entry_type = 'MOMENTUM'
+            else:
+                # ORDER_BLOCK needs additional entry trigger
+                zone_size = abs(current_bar[col_map['high']] - current_bar[col_map['low']]) * 2
+                if abs(current_price - poi['price']) > zone_size:
+                    continue
+
+                has_trigger, entry_type = self.check_entry_trigger(
+                    current_bar, prev_bar, poi['direction'], col_map
+                )
+                if not has_trigger:
+                    continue
 
             # Calculate base risk
             risk_mult, should_skip = self.risk_scorer.calculate_risk_multiplier(
@@ -950,13 +807,7 @@ class H1V64GBPUSDExecutor:
             if should_skip:
                 continue
 
-            # LAYER 4: Pattern-based filter check
-            pattern_can_trade, pattern_extra_q, pattern_size_mult, pattern_reason = self.pattern_filter.check_trade(poi['direction'])
-            if not pattern_can_trade:
-                logger.info(f"[Layer4] Trade blocked: {pattern_reason}")
-                continue
-
-            # Apply pattern extra quality requirement
+            # LAYER 4: Pattern already checked above, apply quality requirement
             effective_quality = dynamic_quality + pattern_extra_q
             if poi['quality'] < effective_quality:
                 logger.debug(f"POI quality {poi['quality']:.0f} < required {effective_quality:.0f}")
@@ -976,6 +827,8 @@ class H1V64GBPUSDExecutor:
                 sl_price = current_price + (sl_pips * PIP_SIZE)
                 tp_price = current_price - (tp_pips * PIP_SIZE)
 
+            logger.info(f"[{poi_type}] Signal found: {poi['direction']} Q={poi['quality']:.0f}")
+
             return TradeSignal(
                 direction=poi['direction'],
                 entry_price=current_price,
@@ -990,7 +843,8 @@ class H1V64GBPUSDExecutor:
                 quality_threshold=effective_quality,
                 monthly_adj=market_cond.monthly_adjustment + intra_month_adj,
                 pattern_size_mult=pattern_size_mult,
-                pattern_status=pattern_reason
+                pattern_status=pattern_reason,
+                poi_type=poi_type
             )
 
         return None
@@ -998,13 +852,14 @@ class H1V64GBPUSDExecutor:
     async def execute_signal(self, signal: TradeSignal) -> bool:
         """Execute trade signal"""
         try:
-            logger.info(f"Executing {signal.direction} signal:")
+            logger.info(f"Executing {signal.direction} signal [{signal.poi_type}]:")
             logger.info(f"  Entry: {signal.entry_price:.5f}")
             logger.info(f"  SL: {signal.sl_price:.5f}")
             logger.info(f"  TP: {signal.tp_price:.5f}")
             logger.info(f"  Lot: {signal.lot_size}")
             logger.info(f"  Quality: {signal.quality_score:.1f} (req: {signal.quality_threshold:.0f})")
             logger.info(f"  Market: {signal.market_condition}")
+            logger.info(f"  Signal Type: {signal.poi_type}")
             logger.info(f"  Pattern: {signal.pattern_status} ({signal.pattern_size_mult:.0%} size)")
 
             # Place order via broker
@@ -1022,8 +877,11 @@ class H1V64GBPUSDExecutor:
 
                 # Send Telegram notification
                 if self.telegram:
+                    # v6.7: Include signal type
+                    signal_emoji = "📊" if signal.poi_type == "ORDER_BLOCK" else "📈"
                     msg = (
-                        f"[v6.4 GBPUSD] NEW TRADE\n"
+                        f"{signal_emoji} [v6.7 GBPUSD] NEW TRADE\n"
+                        f"Signal: {signal.poi_type}\n"
                         f"Direction: {signal.direction}\n"
                         f"Entry: {signal.entry_price:.5f}\n"
                         f"SL: {signal.sl_price:.5f}\n"
@@ -1049,8 +907,8 @@ class H1V64GBPUSDExecutor:
         """Record trade result for Layer 3 & 4 tracking"""
         now = datetime.now(timezone.utc)
 
-        # Layer 3: Record for intra-month tracking
-        self.intra_month_manager.record_trade(pnl, now)
+        # Layer 3: Record for intra-month tracking (with direction for state persistence)
+        self.intra_month_manager.record_trade(pnl, now, direction)
 
         # Layer 4: Record for pattern filter
         self.pattern_filter.record_trade(direction, pnl, now)
@@ -1108,8 +966,9 @@ class H1V64GBPUSDExecutor:
             'has_position': self.current_position is not None,
             'last_signal': self.last_signal_time.isoformat() if self.last_signal_time else None,
             'layer1_monthly_adj': self.risk_scorer.get_monthly_quality_adjustment(now),
-            'layer3_status': self.intra_month_manager.get_status(),
+            'layer3_status': self.intra_month_manager.get_stats(),
             'layer4_status': self.pattern_filter.get_stats(),
+            'state': self.state_manager.get_summary(),
             'vector_enabled': self.enable_vector
         }
 

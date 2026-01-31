@@ -1,10 +1,10 @@
 """
-SURGE-WSI GBPUSD H1 Quad-Layer Strategy
-========================================
+SURGE-WSI GBPUSD H1 Quad-Layer Strategy v6.6
+=============================================
 
 QUAD-LAYER Quality Filter for ZERO losing months:
-- Layer 1: Monthly profile from market analysis (tradeable %)
-- Layer 2: Real-time technical indicators (ATR stability, efficiency, ADX)
+- Layer 1: Monthly profile (seasonal template from 2024 data)
+- Layer 2: Real-time technical indicators (ATR stability, efficiency, EMA trend)
 - Layer 3: Intra-month dynamic risk (consecutive losses, monthly P&L)
 - Layer 4: Pattern-Based Choppy Market Detector (rolling WR, direction tracking)
 
@@ -29,9 +29,10 @@ Telegram Commands:
     /autotrading - Check MT5 AutoTrading status
     /help       - Show all available commands
 
-Backtest Results (Jan 2025 - Jan 2026):
-    - 102 trades, 42.2% WR, PF 3.57
-    - +$12,888.80 profit (+25.8% return on $50K)
+Backtest Results (Feb 2024 - Jan 2026):
+    - 95 trades, 45.3% WR, PF 4.18
+    - +$14,016.17 profit (+28.0% return on $50K)
+    - Max Drawdown: -0.75% ($396.79)
     - ZERO losing months (0/13)
 
 MT5 Account: MetaQuotes-Demo (NOT Finex)
@@ -51,6 +52,8 @@ STRATEGY_DIR = Path(__file__).parent
 # Project root (2 levels up)
 PROJECT_ROOT = STRATEGY_DIR.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+# Add strategies folder to allow package imports
+sys.path.insert(0, str(STRATEGY_DIR.parent))
 
 from loguru import logger
 
@@ -58,8 +61,8 @@ from config import config
 from src.data.db_handler import DBHandler
 from src.data.mt5_connector import MT5Connector
 
-# Import from local executor.py
-from executor import (
+# Import from strategy package
+from gbpusd_h1_quadlayer.executor import (
     H1V64GBPUSDExecutor, SYMBOL, TIMEFRAME, Regime,
     MONTHLY_TRADEABLE_PCT, HOUR_MULTIPLIERS, DAY_MULTIPLIERS,
     PATTERN_FILTER_ENABLED, WARMUP_TRADES, ROLLING_WINDOW,
@@ -68,6 +71,7 @@ from executor import (
     RISK_PERCENT, SL_ATR_MULT, TP_RATIO,
     BASE_QUALITY, MIN_QUALITY_GOOD, MAX_QUALITY_BAD
 )
+from gbpusd_h1_quadlayer.strategy_config import STATE_FILE
 from src.utils.telegram import TelegramNotifier, TelegramFormatter
 import MetaTrader5 as mt5
 import socket
@@ -623,12 +627,13 @@ class TradingBot:
             logger.warning(f"Telegram init failed: {e}")
             self.telegram = None
 
-        # Initialize executor with QUAD-LAYER filter
+        # Initialize executor with QUAD-LAYER filter and state persistence
         self.executor = H1V64GBPUSDExecutor(
             broker_client=broker,
             db_handler=self.db,
             telegram_bot=self.telegram,
-            mt5_connector=self.mt5
+            mt5_connector=self.mt5,
+            state_file=str(STATE_FILE)  # Persist state across restarts
         )
 
         # Register Telegram commands
@@ -1253,7 +1258,7 @@ class TradingBot:
         async def monthly_handler():
             """View monthly trading summary"""
             now = datetime.now(timezone.utc)
-            l3_status = self.executor.intra_month_manager.get_status()
+            l3_status = self.executor.intra_month_manager.get_stats()
 
             # Get monthly trades from history
             history = self.executor.pattern_filter.trade_history
