@@ -107,6 +107,49 @@ RSI_CONFIG = {
 
 ## TECHNIQUES THAT FAILED ❌
 
+### Entry Filter Techniques (Tested with v3.7)
+
+#### RSI Slope Filter ❌
+**Result:** -620.3% (CATASTROPHIC)
+**Why Failed:** Waiting for RSI to "turn" misses best entries
+- Filtered 3249 trades (55%!)
+- Win rate dropped to 34.3%
+**Verdict:** REMOVED - severely reduces opportunity
+
+#### ATR Expanding Filter ❌
+**Result:** -394.6%
+**Why Failed:** Mean reversion works in both expanding and contracting volatility
+- Filtered 831 trades
+- No improvement in win rate
+**Verdict:** REMOVED - arbitrary filter
+
+#### Previous Candle Confirmation ❌
+**Result:** -484.2%
+**Why Failed:** Random candle direction doesn't predict mean reversion success
+- MaxDD actually increased to 44.6%
+**Verdict:** REMOVED - adds noise, no benefit
+
+#### Multi-bar RSI Confirmation ❌
+**Result:** -432.2%
+**Why Failed:** Waiting for 2 bars oversold misses best entries
+- Reduces trade count significantly
+**Verdict:** REMOVED - delays entry unnecessarily
+
+### RSI Threshold Variations (with skip_hours)
+
+| RSI | Return | MaxDD | Ret/DD |
+|-----|--------|-------|--------|
+| 40/60 | +516.2% | 38.6% | 13.36 |
+| 41/59 | +534.3% | 38.9% | 13.73 |
+| **42/58** | **+618.2%** | **30.7%** | **20.17** |
+| 43/57 | +554.8% | 34.4% | 16.12 |
+| 44/56 | +514.2% | 33.2% | 15.51 |
+| 45/55 | +544.0% | 28.8% | 18.88 |
+
+**Verdict:** RSI 42/58 is OPTIMAL by risk-adjusted metric (Ret/DD = 20.17)
+
+---
+
 ### Position Sizing Techniques
 
 #### Kelly Criterion (Half-Kelly ~2.3%) ❌
