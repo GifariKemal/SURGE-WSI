@@ -356,15 +356,25 @@ class PatternBasedFilter:
         self.probe_taken = False
 
     def reset_for_month(self, month: int):
-        """Soft reset - keep history but reset monthly flags"""
+        """Reset filter state for new month - fresh start each month"""
         self.current_month = month
         self.probe_taken = False
-        # Don't reset trade_history - we want to learn across months
-        if self.in_recovery and self.recovery_wins >= RECOVERY_WIN_REQUIRED:
-            self.is_halted = False
-            self.in_recovery = False
-            self.recovery_wins = 0
-            logger.info("[Layer4] Recovery complete, filter reset")
+
+        # CRITICAL FIX: Always reset halt state on new month
+        # Previous issue: halt could persist across months if not in recovery
+        if self.is_halted:
+            logger.info(f"[Layer4] New month {month}: clearing halt state (was: {self.halt_reason})")
+
+        self.is_halted = False
+        self.in_recovery = False
+        self.recovery_wins = 0
+        self.halt_reason = ""
+
+        # Keep trade_history for learning but cap at last 30 trades
+        if len(self.trade_history) > 30:
+            self.trade_history = self.trade_history[-30:]
+
+        logger.info(f"[Layer4] Reset for month {month}, history: {len(self.trade_history)} trades")
 
     def _get_rolling_stats(self) -> dict:
         """Calculate rolling statistics from recent trades"""
@@ -876,11 +886,17 @@ class H1V64GBPUSDExecutor:
         return False, ""
 
     def is_kill_zone(self, dt: datetime) -> Tuple[bool, str]:
-        """Check if current time is in kill zone"""
+        """
+        Check if current time is in kill zone.
+
+        Note: Hour 7 & 11 are blocked by HOUR_MULTIPLIERS = 0.0 (not here)
+        This function only defines the active trading windows.
+        """
         hour = dt.hour
-        # v6.8: Skip Hour 7 (0% WR) and Hour 11 (27.3% WR)
-        if hour in [8, 9, 10]:  # London kill zone (skip 7, 11)
+        # London session: Hours 8-10 (Hour 7 & 11 blocked by HOUR_MULTIPLIERS)
+        if hour in [8, 9, 10]:
             return True, "london"
+        # New York session: Hours 13-17
         elif 13 <= hour <= 17:
             return True, "newyork"
         return False, ""
@@ -1108,19 +1124,62 @@ class H1V64GBPUSDExecutor:
         logger.info(f"Trade result recorded: {direction} ${pnl:+.2f}")
 
     async def check_position(self) -> Optional[dict]:
-        """Check current position status"""
+        """Check current position status and record result if closed"""
         if not self.current_position:
             return None
 
         try:
             positions = await self.broker.get_positions(SYMBOL)
             if not positions:
-                # Position closed - need to get P&L and record
+                # Position closed - get P&L from trade history and record
+                closed_direction = self.current_position.direction
+                pnl = await self._get_last_trade_pnl()
+
+                if pnl is not None:
+                    await self.record_trade_result(pnl, closed_direction)
+                    logger.info(f"Position closed: {closed_direction} P&L=${pnl:+.2f}")
+
+                    # Send Telegram notification
+                    if self.telegram:
+                        result_emoji = "🟢" if pnl > 0 else "🔴"
+                        msg = (
+                            f"{result_emoji} [v6.4 GBPUSD] TRADE CLOSED\n"
+                            f"Direction: {closed_direction}\n"
+                            f"P&L: ${pnl:+.2f}\n"
+                            f"Monthly P&L: ${self.intra_month_manager.monthly_pnl:+.2f}"
+                        )
+                        await self.telegram.send_message(msg)
+                else:
+                    logger.warning("Position closed but could not get P&L from history")
+
                 self.current_position = None
-                return {'status': 'closed'}
+                return {'status': 'closed', 'pnl': pnl}
+
             return {'status': 'open', 'position': positions[0]}
         except Exception as e:
             logger.error(f"Position check error: {e}")
+            return None
+
+    async def _get_last_trade_pnl(self) -> Optional[float]:
+        """Get P&L of last closed trade from broker history"""
+        try:
+            # Try to get recent trade history
+            if hasattr(self.broker, 'get_trade_history'):
+                history = await self.broker.get_trade_history(SYMBOL, limit=1)
+                if history and len(history) > 0:
+                    return history[0].get('profit', 0.0)
+
+            # Fallback: try to get from MT5 directly
+            if self.mt5 and hasattr(self.mt5, 'get_last_trade'):
+                trade = self.mt5.get_last_trade(SYMBOL)
+                if trade:
+                    return trade.get('profit', 0.0)
+
+            logger.warning("No trade history method available on broker")
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to get last trade P&L: {e}")
             return None
 
     async def run_cycle(self):

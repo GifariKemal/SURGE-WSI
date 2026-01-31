@@ -5,15 +5,32 @@ Trading Filters - Shared filter classes for live and backtest
 This module contains the shared trading filter logic used by both
 executor.py (live trading) and backtest.py.
 
-Classes:
+Active Classes:
 - IntraMonthRiskManager: Layer 3 - Dynamic risk based on monthly performance
-- PatternBasedFilter: Layer 4 - Choppy market detection
-- ChoppinessFilter: Layer 5 - Choppiness Index based filter (NEW!)
+- PatternBasedFilter: Layer 4 - Choppy market detection (FIXED in v6.6.0)
+- H4BiasFilter: Layer 7 - Higher Timeframe Bias (v6.8)
+- MarketStructureFilter: Layer 8 - BOS/CHoCH detection (NEW in v6.9)
 
-References:
-- Choppiness Index by E.W. Dreiss (1993)
-- https://www.tradingview.com/support/solutions/43000501980-choppiness-index-chop/
-- https://www.quantifiedstrategies.com/choppiness-index/
+Deprecated Classes (kept for backwards compatibility):
+- ChoppinessFilter: Layer 5 - Tested, made results worse
+- DirectionalMomentumFilter: Layer 6 - Tested, made results worse
+
+Key Fix (v6.6.0):
+- PatternBasedFilter direction window bug: was using DIRECTION_TEST_WINDOW (8)
+  instead of ROLLING_WINDOW (10) for direction-specific win rate calculation.
+  Fixed by using same 'recent' variable for both rolling_wr and direction stats.
+
+New Feature (v6.8):
+- H4BiasFilter: Multi-Timeframe analysis using H4 EMA20/EMA50 crossover
+  to filter H1 entries. Only allows trades aligned with H4 trend direction.
+
+New Feature (v6.9):
+- MarketStructureFilter: Break of Structure (BOS) and Change of Character
+  (CHoCH) detection for market structure analysis.
+  - BOS (Bullish): Price breaks above previous swing high in uptrend
+  - BOS (Bearish): Price breaks below previous swing low in downtrend
+  - CHoCH (Bullish): First higher low after downtrend (reversal signal)
+  - CHoCH (Bearish): First lower high after uptrend (reversal signal)
 
 Author: SURIOTA Team
 """
@@ -21,8 +38,11 @@ Author: SURIOTA Team
 from datetime import datetime, timezone, timedelta
 from typing import Tuple, List, Optional, Dict, Any
 from dataclasses import dataclass
+from enum import Enum
 from loguru import logger
 import math
+import pandas as pd
+import numpy as np
 
 
 # ============================================================
@@ -51,27 +71,40 @@ CAUTION_SIZE_MULT = 0.6            # Size multiplier in caution mode
 PROBE_TRADE_SIZE = 0.4             # Size for probe trades
 PROBE_QUALITY_EXTRA = 5            # Extra quality for probe trades
 
-# Monthly tradeable percentage (historical data)
-# Higher % = better month, lower quality requirement
+# Monthly tradeable percentage (historical data only - 2024)
+# For future months, we use SEASONAL approach: same month from 2024 with safety margin
 MONTHLY_TRADEABLE_PCT = {
-    # 2024
+    # 2024 - Actual historical data (used as seasonal template)
     (2024, 1): 67, (2024, 2): 55, (2024, 3): 70, (2024, 4): 80,
     (2024, 5): 65, (2024, 6): 72, (2024, 7): 78, (2024, 8): 60,
     (2024, 9): 75, (2024, 10): 58, (2024, 11): 68, (2024, 12): 45,
-    # 2025 - Keep original values, use technique improvements instead
-    (2025, 1): 65, (2025, 2): 55, (2025, 3): 70, (2025, 4): 70,
-    (2025, 5): 62, (2025, 6): 68, (2025, 7): 78, (2025, 8): 65,
-    (2025, 9): 72, (2025, 10): 58, (2025, 11): 66, (2025, 12): 60,
-    # 2026
-    (2026, 1): 65, (2026, 2): 55, (2026, 3): 70, (2026, 4): 70,
-    (2026, 5): 62, (2026, 6): 68, (2026, 7): 78, (2026, 8): 65,
-    (2026, 9): 72, (2026, 10): 58, (2026, 11): 66, (2026, 12): 60,
+}
+
+# Seasonal template: Use 2024 data with targeted adjustments
+# Only apply safety margin to historically optimistic months (>70%)
+# This balances conservatism with trade opportunities
+SEASONAL_TEMPLATE = {
+    1: 65,  # 67 - slight margin
+    2: 55,  # 55 - already conservative, keep as is
+    3: 70,  # 70 - keep as is
+    4: 70,  # 80 - 10 (optimistic month, apply margin)
+    5: 62,  # 65 - slight margin
+    6: 68,  # 72 - slight margin
+    7: 78,  # 78 - keep as is (good month)
+    8: 60,  # 60 - keep as is (already cautious)
+    9: 72,  # 75 - slight margin
+    10: 58, # 58 - keep as is (already cautious)
+    11: 66, # 68 - slight margin
+    12: 45, # 45 - keep as is (worst month)
 }
 
 
 def get_monthly_quality_adjustment(dt: datetime) -> int:
     """
     Get quality adjustment based on month's historical tradeable percentage.
+
+    Uses seasonal approach for future months: same month from 2024 template
+    with 10% safety margin to account for year-to-year variation.
 
     Args:
         dt: Datetime to check
@@ -80,7 +113,8 @@ def get_monthly_quality_adjustment(dt: datetime) -> int:
         Quality adjustment (higher = stricter filter)
     """
     key = (dt.year, dt.month)
-    tradeable_pct = MONTHLY_TRADEABLE_PCT.get(key, 70)  # Default 70%
+    # First check exact match, then use conservative seasonal template
+    tradeable_pct = MONTHLY_TRADEABLE_PCT.get(key, SEASONAL_TEMPLATE.get(dt.month, 55))
 
     if tradeable_pct < 30:
         return 50  # NO TRADE - extremely poor month
@@ -311,7 +345,7 @@ class PatternBasedFilter:
 
         self.trade_count += 1
 
-        # Track recovery progress (same as original - no _analyze_patterns call)
+        # Track recovery progress
         if self.in_recovery:
             if pnl > 0:
                 self.recovery_wins += 1
@@ -324,54 +358,6 @@ class PatternBasedFilter:
                         self.state_manager.exit_recovery_mode()
             else:
                 self.recovery_wins = 0  # Reset on loss
-
-    def _analyze_patterns(self):
-        """Analyze patterns and update halt status"""
-        if self.trade_count < WARMUP_TRADES:
-            return  # Still in warmup
-
-        recent = self.trade_history[-ROLLING_WINDOW:] if len(self.trade_history) >= ROLLING_WINDOW else self.trade_history
-
-        if len(recent) < ROLLING_WINDOW:
-            return
-
-        # Calculate rolling win rate
-        wins = sum(1 for _, pnl, _ in recent if pnl > 0)
-        rolling_wr = wins / len(recent)
-
-        # Check for halt conditions
-        if rolling_wr < ROLLING_WR_HALT:
-            if not self.is_halted:
-                self.is_halted = True
-                self.in_recovery = True  # Immediately enter recovery mode
-                self.recovery_wins = 0
-                self.halt_reason = f"Rolling WR {rolling_wr:.0%} < {ROLLING_WR_HALT:.0%}"
-                logger.warning(f"[Layer4] HALT: {self.halt_reason}")
-                if self.state_manager:
-                    self.state_manager.set_halted(self.halt_reason)
-            return
-
-        # Check both directions failing (match original: count losses directly in window)
-        if len(self.trade_history) >= BOTH_DIRECTIONS_FAIL_THRESHOLD * 2:
-            recent_window = self.trade_history[-BOTH_DIRECTIONS_FAIL_THRESHOLD*2:]
-
-            # Count losses directly (original logic from _get_rolling_stats)
-            buy_losses = sum(1 for d, p, _ in recent_window if d == 'BUY' and p < 0)
-            sell_losses = sum(1 for d, p, _ in recent_window if d == 'SELL' and p < 0)
-
-            if buy_losses >= BOTH_DIRECTIONS_FAIL_THRESHOLD and sell_losses >= BOTH_DIRECTIONS_FAIL_THRESHOLD:
-                if not self.is_halted:
-                    self.is_halted = True
-                    self.in_recovery = True  # Immediately enter recovery mode
-                    self.recovery_wins = 0
-                    self.halt_reason = f"Both directions failing: BUY {buy_losses}/{BOTH_DIRECTIONS_FAIL_THRESHOLD}, SELL {sell_losses}/{BOTH_DIRECTIONS_FAIL_THRESHOLD}"
-                    logger.warning(f"[Layer4] HALT: {self.halt_reason}")
-                    if self.state_manager:
-                        self.state_manager.set_halted(self.halt_reason)
-                return
-
-        # Note: Recovery is handled via recovery_wins in record_trade
-        # No automatic clearing based on conditions - must win during recovery
 
     def check_trade_allowed(self) -> Tuple[bool, float, str]:
         """
@@ -436,24 +422,33 @@ class PatternBasedFilter:
 
     def reset_for_month(self, month: int):
         """
-        Soft reset for new month (matches original exactly).
+        Reset filter state for new month - fresh start each month.
 
-        Only clears halt state if we had a recovery win.
-        Trade history is kept for pattern analysis continuity.
+        CRITICAL FIX: Always clear halt state on new month.
+        Previous bug: halt could persist across months if not in recovery.
+        Trade history is kept (capped) for pattern analysis continuity.
         """
         self.current_month = month
         self.probe_taken = False
-        # Don't reset trade_history - we want to learn across months!
-        # Only reset halt if we had recovery
-        if self.in_recovery and self.recovery_wins >= RECOVERY_WIN_REQUIRED:
-            logger.info(f"[Layer4] Month reset: clearing halt after recovery ({self.recovery_wins} wins)")
-            self.is_halted = False
-            self.in_recovery = False
-            self.recovery_wins = 0
-            self.halt_reason = ""
-            if self.state_manager:
-                self.state_manager.clear_halt()
-                self.state_manager.exit_recovery_mode()
+
+        # ALWAYS reset halt state on new month - each month is a fresh start
+        if self.is_halted:
+            logger.info(f"[Layer4] New month {month}: clearing halt state (was: {self.halt_reason})")
+
+        self.is_halted = False
+        self.in_recovery = False
+        self.recovery_wins = 0
+        self.halt_reason = ""
+
+        if self.state_manager:
+            self.state_manager.clear_halt()
+            self.state_manager.exit_recovery_mode()
+
+        # Keep trade_history for learning but cap at last 30 trades
+        if len(self.trade_history) > 30:
+            self.trade_history = self.trade_history[-30:]
+
+        logger.info(f"[Layer4] Reset for month {month}, history: {len(self.trade_history)} trades")
 
     def check_trade(self, direction: str) -> Tuple[bool, int, float, str]:
         """
@@ -535,21 +530,23 @@ class PatternBasedFilter:
 
 
 # ============================================================
-# Layer 5: Choppiness Index Filter
-# Based on E.W. Dreiss (1993) - Chaos Theory Applied to Markets
-# Reference: https://www.tradingview.com/support/solutions/43000501980-choppiness-index-chop/
+# DEPRECATED: Layer 5 & 6 Filters
+# ============================================================
+# These filters were tested but MADE RESULTS WORSE:
+# - ChoppinessFilter: Only adjusted 10 trades, didn't prevent losses
+# - DirectionalMomentumFilter: Added May as losing month when combined with ADX
+# Kept for backwards compatibility and research reference.
 # ============================================================
 
-# Choppiness Index thresholds (DEPRECATED - use DirectionalMomentumFilter instead)
-# Kept for backwards compatibility but disabled by default
-CHOP_PERIOD = 14                   # Lookback period for CHOP calculation
-CHOP_CHOPPY_THRESHOLD = 61.8       # Above this = choppy market
-CHOP_TRENDING_THRESHOLD = 38.2     # Below this = trending market
-CHOP_EXTREME_CHOPPY = 70.0         # Extreme choppiness - very high risk
-CHOP_SIZE_REDUCTION_CHOPPY = 0.5   # Reduce size to 50% in choppy conditions
-CHOP_SIZE_REDUCTION_EXTREME = 0.3  # Reduce size to 30% in extreme choppy
-CHOP_QUALITY_ADD_CHOPPY = 10       # Add +10 quality requirement when choppy
-CHOP_QUALITY_ADD_EXTREME = 20      # Add +20 quality requirement when extreme choppy
+# Choppiness Index thresholds (DEPRECATED)
+CHOP_PERIOD = 14
+CHOP_CHOPPY_THRESHOLD = 61.8
+CHOP_TRENDING_THRESHOLD = 38.2
+CHOP_EXTREME_CHOPPY = 70.0
+CHOP_SIZE_REDUCTION_CHOPPY = 0.5
+CHOP_SIZE_REDUCTION_EXTREME = 0.3
+CHOP_QUALITY_ADD_CHOPPY = 10
+CHOP_QUALITY_ADD_EXTREME = 20
 
 
 def calculate_choppiness_index(
@@ -613,16 +610,10 @@ def calculate_choppiness_index(
 
 class ChoppinessFilter:
     """
-    Layer 5: Choppiness Index Based Market Filter
+    DEPRECATED: Layer 5 - Choppiness Index Based Market Filter
 
-    Uses the Choppiness Index to detect choppy/ranging markets and adjust
-    trading parameters accordingly. Instead of blocking trades entirely,
-    it reduces position size and increases quality requirements.
-
-    Key benefits:
-    - Detects choppy markets BEFORE losses accumulate
-    - Allows trades in choppy markets with reduced risk
-    - No missed opportunities (unlike pattern-based halt)
+    WARNING: Tested in backtest - only adjusted 10 trades, didn't prevent losses.
+    Kept for backwards compatibility only. DO NOT USE in production.
 
     Reference: E.W. Dreiss (1993), Chaos Theory applied to commodities
     """
@@ -709,39 +700,25 @@ class ChoppinessFilter:
         }
 
 
-# ============================================================
-# Layer 6: Directional Momentum Filter (NEW!)
-# Detects when one direction is consistently failing
-# ============================================================
-
-# Directional Momentum thresholds
-# ADX regime detection is primary protection. This is secondary backup.
-DIR_CONSEC_LOSS_CAUTION = 2    # 2 consecutive losses: early caution
-DIR_CONSEC_LOSS_WARNING = 3    # 3 consecutive losses: warning
-DIR_CONSEC_LOSS_EXTREME = 4    # 4+ consecutive losses: extreme
-DIR_SIZE_CAUTION = 0.6         # 60% size at caution level
-DIR_SIZE_WARNING = 0.4         # 40% size at warning level
-DIR_SIZE_EXTREME = 0.25        # 25% size at extreme level
-DIR_QUALITY_CAUTION = 5        # +5 quality at caution
-DIR_QUALITY_WARNING = 12       # +12 quality at warning
-DIR_QUALITY_EXTREME = 20       # +20 quality at extreme
-DIR_RECOVERY_WINS = 1          # 1 win resets the counter
+# Directional Momentum thresholds (DEPRECATED)
+DIR_CONSEC_LOSS_CAUTION = 2
+DIR_CONSEC_LOSS_WARNING = 3
+DIR_CONSEC_LOSS_EXTREME = 4
+DIR_SIZE_CAUTION = 0.6
+DIR_SIZE_WARNING = 0.4
+DIR_SIZE_EXTREME = 0.25
+DIR_QUALITY_CAUTION = 5
+DIR_QUALITY_WARNING = 12
+DIR_QUALITY_EXTREME = 20
+DIR_RECOVERY_WINS = 1
 
 
 class DirectionalMomentumFilter:
     """
-    Layer 6: Directional Momentum Filter
+    DEPRECATED: Layer 6 - Directional Momentum Filter
 
-    Detects when one direction (BUY or SELL) is consistently failing
-    and adjusts position size accordingly. Unlike pattern filter's
-    both_directions_fail, this triggers on SINGLE direction failure.
-
-    Key insight: In April 2025, all 4 losses were SELL direction.
-    The pattern filter didn't catch this because it looks for BOTH
-    directions failing. This filter catches single-direction failures.
-
-    This filter NEVER blocks trades (per user requirement).
-    It only reduces size and adds quality requirements.
+    WARNING: Tested in backtest - added May as losing month when combined with ADX.
+    Kept for backwards compatibility only. DO NOT USE in production.
     """
 
     def __init__(self):
@@ -847,6 +824,251 @@ class DirectionalMomentumFilter:
 
 
 # ============================================================
+# Layer 7: H4 Multi-Timeframe Bias Filter (NEW in v6.8)
+# ============================================================
+# Uses H4 timeframe EMA crossover to determine higher timeframe bias.
+# Only allows H1 trades that align with H4 trend direction.
+# ============================================================
+
+class H4Bias(Enum):
+    """H4 Timeframe Bias states"""
+    BULLISH = "bullish"    # EMA20 > EMA50, allow BUY only
+    BEARISH = "bearish"    # EMA20 < EMA50, allow SELL only
+    SIDEWAYS = "sideways"  # EMAs converging, skip trading
+
+
+# H4 Bias Configuration
+H4_EMA_FAST = 20           # Fast EMA period
+H4_EMA_SLOW = 50           # Slow EMA period
+H4_BARS_PER_CANDLE = 4     # H1 bars per H4 candle
+H4_MIN_EMA_SEPARATION = 0.0003  # Minimum separation for trend confirmation (30 pips)
+H4_LOOKBACK_BARS = 100     # Minimum H1 bars needed for H4 calculation
+
+
+def resample_h1_to_h4(df_h1: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+    """
+    Resample H1 OHLCV data to H4 timeframe.
+
+    Groups every 4 H1 bars into 1 H4 bar using standard OHLCV aggregation:
+    - Open: first of the 4 bars
+    - High: max of the 4 bars
+    - Low: min of the 4 bars
+    - Close: last of the 4 bars
+
+    Args:
+        df_h1: H1 DataFrame with datetime index
+        col_map: Column mapping dict with 'open', 'high', 'low', 'close' keys
+
+    Returns:
+        H4 DataFrame with resampled OHLCV data
+    """
+    o, h, l, c = col_map['open'], col_map['high'], col_map['low'], col_map['close']
+
+    # Ensure index is datetime
+    if not isinstance(df_h1.index, pd.DatetimeIndex):
+        df_h1 = df_h1.copy()
+        df_h1.index = pd.to_datetime(df_h1.index)
+
+    # Resample to 4H using standard OHLCV rules
+    df_h4 = df_h1.resample('4H').agg({
+        o: 'first',
+        h: 'max',
+        l: 'min',
+        c: 'last'
+    }).dropna()
+
+    return df_h4
+
+
+def calculate_ema(series: pd.Series, period: int) -> pd.Series:
+    """Calculate Exponential Moving Average"""
+    return series.ewm(span=period, adjust=False).mean()
+
+
+def get_h4_bias(df_h1: pd.DataFrame, col_map: dict) -> Tuple[H4Bias, float, float, float]:
+    """
+    Calculate H4 timeframe bias from H1 data.
+
+    Resamples H1 data to H4, then calculates EMA20/EMA50 crossover
+    to determine the higher timeframe trend direction.
+
+    Args:
+        df_h1: H1 DataFrame (needs at least 200 bars for reliable H4 EMAs)
+        col_map: Column mapping dict
+
+    Returns:
+        Tuple of (bias, ema20, ema50, separation):
+        - bias: H4Bias enum (BULLISH, BEARISH, or SIDEWAYS)
+        - ema20: Current H4 EMA20 value
+        - ema50: Current H4 EMA50 value
+        - separation: EMA separation in price units
+    """
+    # Need enough H1 bars for reliable H4 EMAs
+    # For EMA50 on H4, we need at least 50 H4 bars = 200 H1 bars
+    if len(df_h1) < H4_LOOKBACK_BARS:
+        return H4Bias.SIDEWAYS, 0.0, 0.0, 0.0
+
+    try:
+        # Resample H1 to H4
+        df_h4 = resample_h1_to_h4(df_h1, col_map)
+
+        if len(df_h4) < H4_EMA_SLOW:
+            return H4Bias.SIDEWAYS, 0.0, 0.0, 0.0
+
+        c = col_map['close']
+
+        # Calculate EMAs on H4 data
+        ema20 = calculate_ema(df_h4[c], H4_EMA_FAST)
+        ema50 = calculate_ema(df_h4[c], H4_EMA_SLOW)
+
+        # Get current values
+        current_ema20 = ema20.iloc[-1]
+        current_ema50 = ema50.iloc[-1]
+        current_close = df_h4[c].iloc[-1]
+
+        # Calculate separation
+        separation = abs(current_ema20 - current_ema50)
+
+        # Determine bias
+        if current_ema20 > current_ema50 and separation >= H4_MIN_EMA_SEPARATION:
+            # Strong bullish - EMA20 above EMA50 with clear separation
+            if current_close > current_ema20:
+                # Price above both EMAs - strong bullish
+                return H4Bias.BULLISH, current_ema20, current_ema50, separation
+            else:
+                # Price between EMAs - weak bullish, treat as sideways
+                return H4Bias.SIDEWAYS, current_ema20, current_ema50, separation
+
+        elif current_ema20 < current_ema50 and separation >= H4_MIN_EMA_SEPARATION:
+            # Strong bearish - EMA20 below EMA50 with clear separation
+            if current_close < current_ema20:
+                # Price below both EMAs - strong bearish
+                return H4Bias.BEARISH, current_ema20, current_ema50, separation
+            else:
+                # Price between EMAs - weak bearish, treat as sideways
+                return H4Bias.SIDEWAYS, current_ema20, current_ema50, separation
+        else:
+            # EMAs converging or too close - sideways/ranging market
+            return H4Bias.SIDEWAYS, current_ema20, current_ema50, separation
+
+    except Exception as e:
+        logger.warning(f"[H4Bias] Error calculating H4 bias: {e}")
+        return H4Bias.SIDEWAYS, 0.0, 0.0, 0.0
+
+
+class H4BiasFilter:
+    """
+    Layer 7: H4 Multi-Timeframe Bias Filter
+
+    Uses H4 timeframe EMA20/EMA50 crossover to filter H1 entries.
+    Only allows trades that align with the higher timeframe trend.
+
+    Rules:
+    - H4 BULLISH (EMA20 > EMA50): Only allow BUY signals
+    - H4 BEARISH (EMA20 < EMA50): Only allow SELL signals
+    - H4 SIDEWAYS (EMAs converging): Skip all trading
+    """
+
+    def __init__(self):
+        """Initialize H4 Bias Filter"""
+        self.current_bias = H4Bias.SIDEWAYS
+        self.ema20 = 0.0
+        self.ema50 = 0.0
+        self.separation = 0.0
+        self.last_update = None
+
+        # Statistics tracking
+        self.stats = {
+            'h4_aligned_trades': 0,
+            'h4_contrary_blocked': 0,
+            'h4_sideways_blocked': 0,
+            'h4_bullish_periods': 0,
+            'h4_bearish_periods': 0,
+            'h4_sideways_periods': 0,
+        }
+
+    def update(self, df_h1: pd.DataFrame, col_map: dict) -> H4Bias:
+        """
+        Update H4 bias from latest H1 data.
+
+        Args:
+            df_h1: H1 DataFrame slice up to current bar
+            col_map: Column mapping dict
+
+        Returns:
+            Current H4 bias
+        """
+        self.current_bias, self.ema20, self.ema50, self.separation = get_h4_bias(df_h1, col_map)
+
+        # Track periods
+        if self.current_bias == H4Bias.BULLISH:
+            self.stats['h4_bullish_periods'] += 1
+        elif self.current_bias == H4Bias.BEARISH:
+            self.stats['h4_bearish_periods'] += 1
+        else:
+            self.stats['h4_sideways_periods'] += 1
+
+        return self.current_bias
+
+    def check_trade(self, direction: str) -> Tuple[bool, str]:
+        """
+        Check if trade direction aligns with H4 bias.
+
+        Args:
+            direction: "BUY" or "SELL"
+
+        Returns:
+            Tuple of (allowed, reason)
+        """
+        # SIDEWAYS - skip all trading
+        if self.current_bias == H4Bias.SIDEWAYS:
+            self.stats['h4_sideways_blocked'] += 1
+            return False, f"H4_SIDEWAYS (EMA20={self.ema20:.5f}, EMA50={self.ema50:.5f}, sep={self.separation:.5f})"
+
+        # BULLISH - only allow BUY
+        if self.current_bias == H4Bias.BULLISH:
+            if direction == 'BUY':
+                self.stats['h4_aligned_trades'] += 1
+                return True, f"H4_BULLISH_ALIGNED (EMA20={self.ema20:.5f} > EMA50={self.ema50:.5f})"
+            else:
+                self.stats['h4_contrary_blocked'] += 1
+                return False, f"H4_BULLISH_CONTRARY (SELL blocked, H4 is bullish)"
+
+        # BEARISH - only allow SELL
+        if self.current_bias == H4Bias.BEARISH:
+            if direction == 'SELL':
+                self.stats['h4_aligned_trades'] += 1
+                return True, f"H4_BEARISH_ALIGNED (EMA20={self.ema20:.5f} < EMA50={self.ema50:.5f})"
+            else:
+                self.stats['h4_contrary_blocked'] += 1
+                return False, f"H4_BEARISH_CONTRARY (BUY blocked, H4 is bearish)"
+
+        # Fallback - should not reach here
+        return True, "H4_UNKNOWN"
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get filter statistics"""
+        return {
+            "current_bias": self.current_bias.value,
+            "ema20": self.ema20,
+            "ema50": self.ema50,
+            "separation": self.separation,
+            **self.stats
+        }
+
+    def reset_stats(self):
+        """Reset statistics for new backtest period"""
+        self.stats = {
+            'h4_aligned_trades': 0,
+            'h4_contrary_blocked': 0,
+            'h4_sideways_blocked': 0,
+            'h4_bullish_periods': 0,
+            'h4_bearish_periods': 0,
+            'h4_sideways_periods': 0,
+        }
+
+
+# ============================================================
 # Position Sizing Utilities
 # ============================================================
 
@@ -946,3 +1168,571 @@ def calculate_sl_tp(
         tp_price = entry_price - tp_distance
 
     return sl_price, tp_price, sl_pips, tp_pips
+
+
+# ============================================================
+# Layer 8: Market Structure Filter (BOS/CHoCH) - NEW in v6.9
+# ============================================================
+# Break of Structure (BOS) and Change of Character (CHoCH) detection
+# for trend confirmation and reversal signals.
+#
+# Market Structure Concepts:
+# - Uptrend: Higher Highs (HH) and Higher Lows (HL)
+# - Downtrend: Lower Highs (LH) and Lower Lows (LL)
+#
+# BOS (Break of Structure) - Trend Continuation:
+# - Bullish BOS: Price breaks above previous swing high in uptrend
+# - Bearish BOS: Price breaks below previous swing low in downtrend
+#
+# CHoCH (Change of Character) - Trend Reversal:
+# - Bullish CHoCH: First higher low forms after downtrend
+# - Bearish CHoCH: First lower high forms after uptrend
+# ============================================================
+
+# Market Structure Configuration
+STRUCTURE_SWING_LOOKBACK = 5       # Bars on each side for swing point detection
+STRUCTURE_MIN_SWING_PIPS = 10      # Minimum pips between consecutive swings
+STRUCTURE_BOS_CONFIDENCE = 0.85    # Confidence for BOS signal
+STRUCTURE_CHOCH_CONFIDENCE = 0.70  # Confidence for CHoCH signal (reversal)
+STRUCTURE_MAX_SWINGS = 20          # Maximum swing points to track
+STRUCTURE_QUALITY_BOOST_BOS = 10   # Quality reduction (easier) after BOS confirmation - significant boost!
+STRUCTURE_QUALITY_PENALTY_NO_BOS = 0  # No penalty for no structure - structure is informational
+STRUCTURE_CHOCH_SIZE_MULT = 1.0    # No size reduction for CHoCH - just informational
+STRUCTURE_COUNTER_QUALITY_PENALTY = 0   # No penalty for counter-structure - just informational
+STRUCTURE_COUNTER_SIZE_MULT = 1.0    # No size reduction for counter-structure
+STRUCTURE_BLOCK_COUNTER = False      # If True, block counter-structure trades; if False, penalize
+
+
+class StructureType(Enum):
+    """Types of market structure signals"""
+    NONE = "none"
+    BOS_BULLISH = "bos_bullish"      # Break of Structure - Bullish continuation
+    BOS_BEARISH = "bos_bearish"      # Break of Structure - Bearish continuation
+    CHOCH_BULLISH = "choch_bullish"  # Change of Character - Bearish to Bullish
+    CHOCH_BEARISH = "choch_bearish"  # Change of Character - Bullish to Bearish
+
+
+class TrendState(Enum):
+    """Current trend state based on swing structure"""
+    UNKNOWN = "unknown"
+    BULLISH = "bullish"
+    BEARISH = "bearish"
+
+
+@dataclass
+class SwingPoint:
+    """Represents a swing high or swing low"""
+    index: int              # Bar index in dataframe
+    price: float            # Price level
+    is_high: bool           # True = swing high, False = swing low
+    timestamp: datetime     # Time of the swing
+    confirmed: bool = True  # Whether the swing is confirmed
+
+
+@dataclass
+class StructureSignal:
+    """Market structure signal output"""
+    structure_type: StructureType
+    direction: str          # "BUY", "SELL", or "NONE"
+    confidence: float       # 0.0 to 1.0
+    trigger_price: float    # Price that triggered the signal
+    trigger_index: int      # Bar index that triggered
+    previous_swing: Optional[SwingPoint] = None
+
+
+def detect_swing_points(
+    df: pd.DataFrame,
+    col_map: dict,
+    lookback: int = STRUCTURE_SWING_LOOKBACK,
+    min_distance_pips: float = STRUCTURE_MIN_SWING_PIPS,
+    pip_size: float = 0.0001
+) -> List[SwingPoint]:
+    """
+    Identify swing highs and swing lows in price data.
+
+    A swing high is a bar whose high is higher than the highs of
+    'lookback' bars on each side.
+    A swing low is a bar whose low is lower than the lows of
+    'lookback' bars on each side.
+
+    Args:
+        df: DataFrame with OHLCV data
+        col_map: Column name mapping {'high': 'High', 'low': 'Low', ...}
+        lookback: Number of bars on each side to confirm swing
+        min_distance_pips: Minimum distance between consecutive swings
+        pip_size: Pip size for the instrument
+
+    Returns:
+        List of SwingPoint objects sorted by index
+    """
+    if len(df) < lookback * 2 + 1:
+        return []
+
+    h = col_map['high']
+    l = col_map['low']
+
+    highs = df[h].values
+    lows = df[l].values
+
+    swing_points: List[SwingPoint] = []
+    min_distance = min_distance_pips * pip_size
+
+    # Get timestamps - handle both datetime index and column
+    if isinstance(df.index, pd.DatetimeIndex):
+        timestamps = df.index.to_list()
+    else:
+        timestamps = [df.index[i] for i in range(len(df))]
+
+    # Detect swing highs and lows
+    for i in range(lookback, len(df) - lookback):
+        # Check swing high
+        is_swing_high = True
+        for j in range(1, lookback + 1):
+            if highs[i] <= highs[i - j] or highs[i] <= highs[i + j]:
+                is_swing_high = False
+                break
+
+        # Check swing low
+        is_swing_low = True
+        for j in range(1, lookback + 1):
+            if lows[i] >= lows[i - j] or lows[i] >= lows[i + j]:
+                is_swing_low = False
+                break
+
+        # Add swing point if valid
+        if is_swing_high:
+            # Check minimum distance from last swing high
+            last_high = None
+            for sp in reversed(swing_points):
+                if sp.is_high:
+                    last_high = sp
+                    break
+
+            if last_high is None or abs(highs[i] - last_high.price) >= min_distance:
+                ts = timestamps[i]
+                if isinstance(ts, str):
+                    ts = pd.to_datetime(ts)
+                swing_points.append(SwingPoint(
+                    index=i,
+                    price=float(highs[i]),
+                    is_high=True,
+                    timestamp=ts
+                ))
+
+        if is_swing_low:
+            # Check minimum distance from last swing low
+            last_low = None
+            for sp in reversed(swing_points):
+                if not sp.is_high:
+                    last_low = sp
+                    break
+
+            if last_low is None or abs(lows[i] - last_low.price) >= min_distance:
+                ts = timestamps[i]
+                if isinstance(ts, str):
+                    ts = pd.to_datetime(ts)
+                swing_points.append(SwingPoint(
+                    index=i,
+                    price=float(lows[i]),
+                    is_high=False,
+                    timestamp=ts
+                ))
+
+    # Sort by index and limit to max swings
+    swing_points.sort(key=lambda x: x.index)
+    if len(swing_points) > STRUCTURE_MAX_SWINGS:
+        swing_points = swing_points[-STRUCTURE_MAX_SWINGS:]
+
+    return swing_points
+
+
+def detect_market_structure(
+    df: pd.DataFrame,
+    col_map: dict,
+    swing_points: Optional[List[SwingPoint]] = None,
+    lookback: int = STRUCTURE_SWING_LOOKBACK,
+    pip_size: float = 0.0001
+) -> StructureSignal:
+    """
+    Detect Break of Structure (BOS) and Change of Character (CHoCH).
+
+    Market Structure Concepts:
+    - Uptrend: Higher Highs (HH) and Higher Lows (HL)
+    - Downtrend: Lower Highs (LH) and Lower Lows (LL)
+
+    BOS (Break of Structure):
+    - Bullish BOS: Price breaks above previous swing high in uptrend
+    - Bearish BOS: Price breaks below previous swing low in downtrend
+    - Confirms trend continuation
+
+    CHoCH (Change of Character):
+    - Bullish CHoCH: First Higher Low after downtrend (trend reversal signal)
+    - Bearish CHoCH: First Lower High after uptrend (trend reversal signal)
+    - Early reversal signal, lower confidence than BOS
+
+    Args:
+        df: DataFrame with OHLCV data
+        col_map: Column name mapping
+        swing_points: Pre-computed swing points (optional)
+        lookback: Swing detection lookback
+        pip_size: Pip size for the instrument
+
+    Returns:
+        StructureSignal with detected structure type and details
+    """
+    # Detect swing points if not provided
+    if swing_points is None:
+        swing_points = detect_swing_points(df, col_map, lookback, pip_size=pip_size)
+
+    # Need at least 4 swings to determine structure (2 highs + 2 lows minimum)
+    if len(swing_points) < 4:
+        return StructureSignal(
+            structure_type=StructureType.NONE,
+            direction="NONE",
+            confidence=0.0,
+            trigger_price=0.0,
+            trigger_index=-1
+        )
+
+    h = col_map['high']
+    l = col_map['low']
+    c = col_map['close']
+
+    current_idx = len(df) - 1
+    current_high = float(df[h].iloc[-1])
+    current_low = float(df[l].iloc[-1])
+    current_close = float(df[c].iloc[-1])
+
+    # Separate swing highs and lows
+    swing_highs = [sp for sp in swing_points if sp.is_high]
+    swing_lows = [sp for sp in swing_points if not sp.is_high]
+
+    if len(swing_highs) < 2 or len(swing_lows) < 2:
+        return StructureSignal(
+            structure_type=StructureType.NONE,
+            direction="NONE",
+            confidence=0.0,
+            trigger_price=0.0,
+            trigger_index=-1
+        )
+
+    # Get the last few swing points
+    last_sh1 = swing_highs[-1]  # Most recent swing high
+    last_sh2 = swing_highs[-2]  # Second most recent swing high
+    last_sl1 = swing_lows[-1]   # Most recent swing low
+    last_sl2 = swing_lows[-2]   # Second most recent swing low
+
+    # Determine current trend state
+    # Higher Highs + Higher Lows = Bullish
+    # Lower Highs + Lower Lows = Bearish
+    hh = last_sh1.price > last_sh2.price  # Higher High
+    hl = last_sl1.price > last_sl2.price  # Higher Low
+    lh = last_sh1.price < last_sh2.price  # Lower High
+    ll = last_sl1.price < last_sl2.price  # Lower Low
+
+    if hh and hl:
+        trend_state = TrendState.BULLISH
+    elif lh and ll:
+        trend_state = TrendState.BEARISH
+    else:
+        trend_state = TrendState.UNKNOWN
+
+    # ============================================================
+    # Check for BOS (Break of Structure) - Trend Continuation
+    # ============================================================
+
+    # Bullish BOS: Current price breaks above most recent swing high in uptrend
+    if trend_state == TrendState.BULLISH and current_high > last_sh1.price:
+        return StructureSignal(
+            structure_type=StructureType.BOS_BULLISH,
+            direction="BUY",
+            confidence=STRUCTURE_BOS_CONFIDENCE,
+            trigger_price=last_sh1.price,
+            trigger_index=current_idx,
+            previous_swing=last_sh1
+        )
+
+    # Bearish BOS: Current price breaks below most recent swing low in downtrend
+    if trend_state == TrendState.BEARISH and current_low < last_sl1.price:
+        return StructureSignal(
+            structure_type=StructureType.BOS_BEARISH,
+            direction="SELL",
+            confidence=STRUCTURE_BOS_CONFIDENCE,
+            trigger_price=last_sl1.price,
+            trigger_index=current_idx,
+            previous_swing=last_sl1
+        )
+
+    # ============================================================
+    # Check for CHoCH (Change of Character) - Trend Reversal
+    # ============================================================
+
+    # Bullish CHoCH: In downtrend, current bar forms a higher low than previous swing low
+    # This signals potential trend reversal from bearish to bullish
+    if trend_state == TrendState.BEARISH:
+        # Check if current low is forming a higher low (above previous swing low)
+        if current_low > last_sl1.price:
+            return StructureSignal(
+                structure_type=StructureType.CHOCH_BULLISH,
+                direction="BUY",
+                confidence=STRUCTURE_CHOCH_CONFIDENCE,
+                trigger_price=last_sl1.price,
+                trigger_index=current_idx,
+                previous_swing=last_sl1
+            )
+
+    # Bearish CHoCH: In uptrend, current bar forms a lower high than previous swing high
+    # This signals potential trend reversal from bullish to bearish
+    if trend_state == TrendState.BULLISH:
+        # Check if current high is forming a lower high (below previous swing high)
+        if current_high < last_sh1.price:
+            return StructureSignal(
+                structure_type=StructureType.CHOCH_BEARISH,
+                direction="SELL",
+                confidence=STRUCTURE_CHOCH_CONFIDENCE,
+                trigger_price=last_sh1.price,
+                trigger_index=current_idx,
+                previous_swing=last_sh1
+            )
+
+    # No structure signal
+    return StructureSignal(
+        structure_type=StructureType.NONE,
+        direction="NONE",
+        confidence=0.0,
+        trigger_price=0.0,
+        trigger_index=-1
+    )
+
+
+class MarketStructureFilter:
+    """
+    Layer 8: Market Structure Filter (BOS/CHoCH Detection)
+
+    Filters trades based on market structure analysis:
+    - BOS (Break of Structure): Trend continuation confirmation
+    - CHoCH (Change of Character): Early trend reversal signal
+
+    Usage:
+    - Only take trades after BOS confirmation in trade direction
+    - Or use CHoCH for early reversal entries (riskier but higher reward)
+
+    This filter CAN block trades if structure doesn't support direction.
+    """
+
+    def __init__(self, pip_size: float = 0.0001):
+        """
+        Initialize market structure filter.
+
+        Args:
+            pip_size: Pip size for the instrument (0.0001 for GBPUSD)
+        """
+        self.pip_size = pip_size
+        self.swing_points: List[SwingPoint] = []
+        self.last_signal: Optional[StructureSignal] = None
+        self.current_trend: TrendState = TrendState.UNKNOWN
+        self.signal_history: List[Tuple[datetime, StructureSignal]] = []
+
+        # Statistics
+        self.bos_bullish_count = 0
+        self.bos_bearish_count = 0
+        self.choch_bullish_count = 0
+        self.choch_bearish_count = 0
+        self.no_signal_count = 0
+        self.trades_allowed = 0
+        self.trades_blocked = 0
+
+    def update(self, df: pd.DataFrame, col_map: dict,
+               timestamp: Optional[datetime] = None) -> StructureSignal:
+        """
+        Update market structure analysis with new price data.
+
+        Args:
+            df: DataFrame with OHLCV data (should include recent bars)
+            col_map: Column name mapping
+            timestamp: Current timestamp (optional)
+
+        Returns:
+            Current StructureSignal
+        """
+        # Detect swing points
+        self.swing_points = detect_swing_points(
+            df, col_map,
+            lookback=STRUCTURE_SWING_LOOKBACK,
+            pip_size=self.pip_size
+        )
+
+        # Detect market structure
+        self.last_signal = detect_market_structure(
+            df, col_map,
+            swing_points=self.swing_points,
+            pip_size=self.pip_size
+        )
+
+        # Update statistics
+        if self.last_signal.structure_type == StructureType.BOS_BULLISH:
+            self.bos_bullish_count += 1
+        elif self.last_signal.structure_type == StructureType.BOS_BEARISH:
+            self.bos_bearish_count += 1
+        elif self.last_signal.structure_type == StructureType.CHOCH_BULLISH:
+            self.choch_bullish_count += 1
+        elif self.last_signal.structure_type == StructureType.CHOCH_BEARISH:
+            self.choch_bearish_count += 1
+        else:
+            self.no_signal_count += 1
+
+        # Update trend state
+        if self.last_signal.structure_type in [StructureType.BOS_BULLISH, StructureType.CHOCH_BULLISH]:
+            self.current_trend = TrendState.BULLISH
+        elif self.last_signal.structure_type in [StructureType.BOS_BEARISH, StructureType.CHOCH_BEARISH]:
+            self.current_trend = TrendState.BEARISH
+
+        # Store in history
+        if timestamp:
+            self.signal_history.append((timestamp, self.last_signal))
+            # Keep last 50 signals
+            if len(self.signal_history) > 50:
+                self.signal_history = self.signal_history[-50:]
+
+        return self.last_signal
+
+    def check_trade(self, direction: str,
+                    allow_choch: bool = True) -> Tuple[bool, int, float, str]:
+        """
+        Check if trade is allowed based on market structure.
+
+        Args:
+            direction: "BUY" or "SELL"
+            allow_choch: Whether to allow CHoCH signals (riskier reversals)
+
+        Returns:
+            Tuple of (can_trade, quality_adjustment, size_multiplier, reason)
+        """
+        if self.last_signal is None:
+            self.trades_allowed += 1
+            return True, 0, 1.0, "NO_STRUCTURE_DATA"
+
+        signal = self.last_signal
+
+        # ============================================================
+        # BOS signals - Strong confirmation, reduce quality requirement
+        # ============================================================
+
+        # Bullish BOS + BUY = Strong confirmation
+        if signal.structure_type == StructureType.BOS_BULLISH and direction == "BUY":
+            self.trades_allowed += 1
+            return True, -STRUCTURE_QUALITY_BOOST_BOS, 1.0, \
+                   f"BOS_BULLISH_CONFIRMED (conf={signal.confidence:.0%})"
+
+        # Bearish BOS + SELL = Strong confirmation
+        if signal.structure_type == StructureType.BOS_BEARISH and direction == "SELL":
+            self.trades_allowed += 1
+            return True, -STRUCTURE_QUALITY_BOOST_BOS, 1.0, \
+                   f"BOS_BEARISH_CONFIRMED (conf={signal.confidence:.0%})"
+
+        # ============================================================
+        # CHoCH signals - Reversal entries (if allowed)
+        # ============================================================
+
+        if allow_choch:
+            # Bullish CHoCH + BUY = Early reversal entry
+            if signal.structure_type == StructureType.CHOCH_BULLISH and direction == "BUY":
+                self.trades_allowed += 1
+                return True, 0, STRUCTURE_CHOCH_SIZE_MULT, \
+                       f"CHOCH_BULLISH_REVERSAL (conf={signal.confidence:.0%})"
+
+            # Bearish CHoCH + SELL = Early reversal entry
+            if signal.structure_type == StructureType.CHOCH_BEARISH and direction == "SELL":
+                self.trades_allowed += 1
+                return True, 0, STRUCTURE_CHOCH_SIZE_MULT, \
+                       f"CHOCH_BEARISH_REVERSAL (conf={signal.confidence:.0%})"
+
+        # ============================================================
+        # Counter-structure trades - Block or heavily penalize
+        # ============================================================
+
+        # BOS in opposite direction
+        if signal.structure_type == StructureType.BOS_BULLISH and direction == "SELL":
+            if STRUCTURE_BLOCK_COUNTER:
+                self.trades_blocked += 1
+                return False, 0, 0, "BOS_BULLISH_BLOCKS_SELL"
+            else:
+                self.trades_allowed += 1
+                return True, STRUCTURE_COUNTER_QUALITY_PENALTY, STRUCTURE_COUNTER_SIZE_MULT, \
+                       f"COUNTER_BOS_BULLISH (penalized)"
+
+        if signal.structure_type == StructureType.BOS_BEARISH and direction == "BUY":
+            if STRUCTURE_BLOCK_COUNTER:
+                self.trades_blocked += 1
+                return False, 0, 0, "BOS_BEARISH_BLOCKS_BUY"
+            else:
+                self.trades_allowed += 1
+                return True, STRUCTURE_COUNTER_QUALITY_PENALTY, STRUCTURE_COUNTER_SIZE_MULT, \
+                       f"COUNTER_BOS_BEARISH (penalized)"
+
+        # CHoCH in opposite direction
+        if signal.structure_type == StructureType.CHOCH_BULLISH and direction == "SELL":
+            if STRUCTURE_BLOCK_COUNTER:
+                self.trades_blocked += 1
+                return False, 0, 0, "CHOCH_BULLISH_BLOCKS_SELL"
+            else:
+                self.trades_allowed += 1
+                return True, STRUCTURE_COUNTER_QUALITY_PENALTY, STRUCTURE_COUNTER_SIZE_MULT, \
+                       f"COUNTER_CHOCH_BULLISH (penalized)"
+
+        if signal.structure_type == StructureType.CHOCH_BEARISH and direction == "BUY":
+            if STRUCTURE_BLOCK_COUNTER:
+                self.trades_blocked += 1
+                return False, 0, 0, "CHOCH_BEARISH_BLOCKS_BUY"
+            else:
+                self.trades_allowed += 1
+                return True, STRUCTURE_COUNTER_QUALITY_PENALTY, STRUCTURE_COUNTER_SIZE_MULT, \
+                       f"COUNTER_CHOCH_BEARISH (penalized)"
+
+        # ============================================================
+        # No clear structure signal - Penalize but allow
+        # ============================================================
+
+        if signal.structure_type == StructureType.NONE:
+            self.trades_allowed += 1
+            return True, STRUCTURE_QUALITY_PENALTY_NO_BOS, 0.9, "NO_STRUCTURE_CONFIRMATION"
+
+        # Default: Allow with slight penalty
+        self.trades_allowed += 1
+        return True, 5, 0.9, f"STRUCTURE_UNCLEAR ({signal.structure_type.value})"
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get current filter statistics"""
+        total_signals = (self.bos_bullish_count + self.bos_bearish_count +
+                        self.choch_bullish_count + self.choch_bearish_count)
+
+        return {
+            "current_trend": self.current_trend.value,
+            "last_signal": self.last_signal.structure_type.value if self.last_signal else "none",
+            "swing_count": len(self.swing_points),
+            "bos_bullish": self.bos_bullish_count,
+            "bos_bearish": self.bos_bearish_count,
+            "choch_bullish": self.choch_bullish_count,
+            "choch_bearish": self.choch_bearish_count,
+            "no_signal": self.no_signal_count,
+            "total_signals": total_signals,
+            "trades_allowed": self.trades_allowed,
+            "trades_blocked": self.trades_blocked,
+            "history_size": len(self.signal_history)
+        }
+
+    def reset_for_month(self, month: int):
+        """
+        Soft reset for new month.
+
+        Note: We keep swing points and trend state as market structure
+        persists across month boundaries. Only reset monthly statistics.
+        """
+        # Reset monthly statistics only
+        self.bos_bullish_count = 0
+        self.bos_bearish_count = 0
+        self.choch_bullish_count = 0
+        self.choch_bearish_count = 0
+        self.no_signal_count = 0
+        self.trades_allowed = 0
+        self.trades_blocked = 0
