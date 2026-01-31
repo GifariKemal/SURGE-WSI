@@ -44,10 +44,11 @@ input bool     SkipOB_Hour16 = true;        // Skip OrderBlock at Hour 16
 input bool     SkipEMA_Hour13 = true;       // Skip EMA Pullback Hour 13
 input bool     SkipEMA_Hour14 = true;       // Skip EMA Pullback Hour 14
 
-input group "=== Trading Hours ==="
-input int      LondonStart = 8;             // London Session Start
-input int      LondonEnd = 10;              // London Session End
-input int      NewYorkStart = 13;           // New York Session Start
+input group "=== Trading Hours (UTC) ==="
+input int      GMTOffset = 0;               // Broker GMT Offset (e.g., 7 for GMT+7)
+input int      LondonStart = 8;             // London Session Start (UTC)
+input int      LondonEnd = 10;              // London Session End (UTC)
+input int      NewYorkStart = 13;           // New York Session Start (UTC)
 input int      NewYorkEnd = 17;             // New York Session End
 
 input group "=== Magic Number ==="
@@ -148,9 +149,14 @@ void OnTick()
    // Check if we already have a position
    if(HasOpenPosition()) return;
 
-   // Get current time info
+   // Get current time info and convert to UTC
    MqlDateTime dt;
    TimeToStruct(TimeCurrent(), dt);
+
+   // Convert server hour to UTC hour
+   int utcHour = dt.hour - GMTOffset;
+   if(utcHour < 0) utcHour += 24;
+   if(utcHour >= 24) utcHour -= 24;
 
    // Check day filter (skip weekends)
    if(dt.day_of_week == 0 || dt.day_of_week == 6) return;
@@ -159,17 +165,17 @@ void OnTick()
    double dayMult = DayMultipliers[dt.day_of_week];
    if(dayMult <= 0.0) return;
 
-   // Check hour multiplier
-   double hourMult = HourMultipliers[dt.hour];
+   // Check hour multiplier (using UTC hour)
+   double hourMult = HourMultipliers[utcHour];
    if(hourMult <= 0.0) return;
 
-   // Check if in kill zone
-   bool inLondon = (dt.hour >= LondonStart && dt.hour <= LondonEnd);
-   bool inNewYork = (dt.hour >= NewYorkStart && dt.hour <= NewYorkEnd);
+   // Check if in kill zone (using UTC hour)
+   bool inLondon = (utcHour >= LondonStart && utcHour <= LondonEnd);
+   bool inNewYork = (utcHour >= NewYorkStart && utcHour <= NewYorkEnd);
    if(!inLondon && !inNewYork) return;
 
-   // Skip Hour 11 if enabled
-   if(SkipHour11 && dt.hour == 11) return;
+   // Skip Hour 11 if enabled (using UTC hour)
+   if(SkipHour11 && utcHour == 11) return;
 
    // Get indicator values
    double atr[], emaFast[], emaSlow[], rsi[], adxMain[];
@@ -213,11 +219,11 @@ void OnTick()
       int obSignal = CheckOrderBlock(quality);
       if(obSignal != 0 && quality >= MinQuality)
       {
-         // Session filter for Order Block
+         // Session filter for Order Block (using UTC hour)
          if(UseSessionFilter)
          {
-            if(SkipOB_Hour8 && dt.hour == 8) obSignal = 0;
-            if(SkipOB_Hour16 && dt.hour == 16) obSignal = 0;
+            if(SkipOB_Hour8 && utcHour == 8) obSignal = 0;
+            if(SkipOB_Hour16 && utcHour == 16) obSignal = 0;
          }
 
          if(obSignal != 0 && ((obSignal > 0 && regime > 0) || (obSignal < 0 && regime < 0)))
@@ -234,11 +240,11 @@ void OnTick()
       int emaSignal = CheckEmaPullback(emaFast, emaSlow, rsi, adxMain, atrPips, quality);
       if(emaSignal != 0 && quality >= MinQuality)
       {
-         // Session filter for EMA Pullback
+         // Session filter for EMA Pullback (using UTC hour)
          if(UseSessionFilter)
          {
-            if(SkipEMA_Hour13 && dt.hour == 13) emaSignal = 0;
-            if(SkipEMA_Hour14 && dt.hour == 14) emaSignal = 0;
+            if(SkipEMA_Hour13 && utcHour == 13) emaSignal = 0;
+            if(SkipEMA_Hour14 && utcHour == 14) emaSignal = 0;
          }
 
          if(emaSignal != 0 && ((emaSignal > 0 && regime > 0) || (emaSignal < 0 && regime < 0)))
