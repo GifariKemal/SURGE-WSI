@@ -72,7 +72,9 @@ double         pipSize;
 double         pipValue;
 
 // Day Multipliers (v6.9)
-double DayMultipliers[7] = {1.0, 0.9, 1.0, 0.8, 0.3, 0.0, 0.0};
+// MQL5: Index 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+// Python: Mon=1.0, Tue=0.9, Wed=1.0, Thu=0.8, Fri=0.3, Sat/Sun=0.0
+double DayMultipliers[7] = {0.0, 1.0, 0.9, 1.0, 0.8, 0.3, 0.0};
 
 // Hour Multipliers
 double HourMultipliers[24] = {
