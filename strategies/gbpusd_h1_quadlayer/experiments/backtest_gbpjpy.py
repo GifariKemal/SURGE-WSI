@@ -1,24 +1,14 @@
 """
-SURGE-WSI H1 v6.4 GBPUSD - DUAL-LAYER QUALITY FILTER
+SURGE-WSI H1 v6.4 GBPJPY - QUAD-LAYER QUALITY FILTER
 =====================================================
 
-Enhancement dari v6.3:
-- Layer 1: MONTHLY PROFILE (dari market analysis data)
-  - Bulan dengan tradeable_pct < 60% → +15 quality requirement
-  - Bulan dengan tradeable_pct < 70% → +10 quality requirement
-  - Bulan dengan tradeable_pct >= 70% → no adjustment
+Same strategy as GBPUSD but applied to GBPJPY pair.
+Testing if Quad-Layer filter works across different pairs.
 
-- Layer 2: REAL-TIME TECHNICAL (sama seperti v6.3)
-  - ATR Stability, Efficiency, Trend Strength
-
-Result: Dual protection against poor market conditions
-
-Market Analysis Data (GBPUSD Monthly):
-- January 2024: 67% tradeable
-- February 2024: 55% tradeable (POOR) - ini yg bikin loss
-- March 2024: 70% tradeable
-- April 2024: 80% tradeable (EXCELLENT)
-- dst...
+Key differences for JPY pairs:
+- PIP_SIZE = 0.01 (vs 0.0001 for USD pairs)
+- PIP_VALUE = ~6.5 USD (vs 10 USD for GBPUSD)
+- Different volatility profile
 
 Author: SURIOTA Team
 """
@@ -118,6 +108,14 @@ warnings.filterwarnings('ignore')
 
 
 # ============================================================
+# GBPJPY OVERRIDE - Different pip size and value for JPY pairs
+# ============================================================
+SYMBOL = "GBPJPY"
+PIP_SIZE = 0.01  # JPY pairs use 0.01 (vs 0.0001 for USD pairs)
+PIP_VALUE = 6.5  # Approx USD per pip per lot (1000 JPY / ~153 rate)
+
+
+# ============================================================
 # VECTOR DATABASE CONFIG
 # ============================================================
 USE_VECTOR_FEATURES = True  # Set False to disable vector feature caching
@@ -142,7 +140,7 @@ TRAIL_ATR_MULT = 1.0            # Trail at 1x ATR distance
 # ============================================================
 # LAYER 4 PATTERN FILTER CONFIG
 # ============================================================
-USE_PATTERN_FILTER = True  # Enable Layer 4 Pattern Filter
+USE_PATTERN_FILTER = True  # Layer 4 Pattern Filter with monthly reset
 
 # ============================================================
 # ENTRY SIGNAL CONFIG
@@ -187,7 +185,7 @@ USE_STRUCTURE_FILTER = False  # DISABLED - reduced profit
 # SESSION-BASED HOUR+POI FILTER (v6.8 - Based on Session Analysis)
 # Skip underperforming Hour+POI combinations
 # ============================================================
-USE_SESSION_POI_FILTER = True  # NEW: Enable session-based filtering
+USE_SESSION_POI_FILTER = False  # Disabled - session filter reduces profit
 
 # Hour 11: Skip entirely (27.3% WR - worst hour)
 SKIP_HOURS = [11]
@@ -338,6 +336,34 @@ class MarketCondition:
 
 
 async def fetch_data(symbol: str, timeframe: str, start: datetime, end: datetime) -> pd.DataFrame:
+    """Fetch data from MT5 directly for GBPJPY (not in database)"""
+    import MetaTrader5 as mt5
+
+    # Try MT5 first
+    if mt5.initialize():
+        tf_map = {
+            'M1': mt5.TIMEFRAME_M1, 'M5': mt5.TIMEFRAME_M5,
+            'M15': mt5.TIMEFRAME_M15, 'M30': mt5.TIMEFRAME_M30,
+            'H1': mt5.TIMEFRAME_H1, 'H4': mt5.TIMEFRAME_H4,
+            'D1': mt5.TIMEFRAME_D1,
+        }
+        mt5_tf = tf_map.get(timeframe, mt5.TIMEFRAME_H1)
+
+        rates = mt5.copy_rates_range(symbol, mt5_tf, start, end)
+        mt5.shutdown()
+
+        if rates is not None and len(rates) > 0:
+            df = pd.DataFrame(rates)
+            df['time'] = pd.to_datetime(df['time'], unit='s')
+            df = df.set_index('time')
+            df = df.rename(columns={
+                'open': 'Open', 'high': 'High', 'low': 'Low',
+                'close': 'Close', 'tick_volume': 'Volume'
+            })
+            print(f"[MT5] Loaded {len(df)} bars from MT5")
+            return df
+
+    # Fallback to database
     db = DBHandler(
         host=config.database.host, port=config.database.port,
         database=config.database.database, user=config.database.user,
@@ -1357,7 +1383,7 @@ async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats
             if image_path:
                 # Send image with caption
                 caption = (
-                    f"<b>SURGE-WSI v6.4 GBPUSD Backtest</b>\n"
+                    f"<b>SURGE-WSI v6.4 {SYMBOL} Backtest</b>\n"
                     f"Period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}\n\n"
                     f"{'✅' if stats['net_pnl'] >= 5000 else '❌'} Profit: ${stats['net_pnl']:+,.0f}\n"
                     f"{'✅' if stats['profit_factor'] >= 2.0 else '❌'} PF: {stats['profit_factor']:.2f}\n"
@@ -1382,7 +1408,7 @@ async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats
 
             # Fallback: Send text report
             msg = TelegramFormatter.tree_header("BACKTEST RESULTS", "📊")
-            msg += f"<b>H1 v6.4 GBPUSD - Triple-Layer Quality</b>\n"
+            msg += f"<b>H1 v6.4 {SYMBOL} - Triple-Layer Quality</b>\n"
             msg += f"Period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}\n\n"
 
             msg += TelegramFormatter.tree_section("Performance", TelegramFormatter.CHART)
@@ -1432,7 +1458,7 @@ async def send_telegram_report(stats: dict, trades: List[Trade], condition_stats
 
 def print_results(stats: dict, trades: List[Trade], condition_stats: dict, skip_stats: dict = None, entry_stats: dict = None, h4_stats: dict = None, structure_stats: dict = None):
     print(f"\n{'='*70}")
-    print(f"BACKTEST RESULTS - H1 v6.9 GBPUSD WITH BOS/CHoCH FILTER")
+    print(f"BACKTEST RESULTS - H1 v6.9 {SYMBOL} WITH BOS/CHoCH FILTER")
     print(f"{'='*70}")
 
     # Partial TP & Trailing Stop stats
@@ -1720,7 +1746,7 @@ async def main():
     start = datetime(2025, 1, 1, tzinfo=timezone.utc)
     end = datetime(2026, 1, 31, tzinfo=timezone.utc)
 
-    print(f"SURGE-WSI H1 v6.4 GBPUSD - TRIPLE-LAYER QUALITY FILTER")
+    print(f"SURGE-WSI H1 v6.4 {SYMBOL} - TRIPLE-LAYER QUALITY FILTER")
     print(f"{'='*70}")
     print(f"Triple-Layer Quality Filter:")
     print(f"  Layer 1: Monthly profile (from market analysis)")

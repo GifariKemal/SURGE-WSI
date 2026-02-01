@@ -28,6 +28,19 @@ import numpy as np
 
 from loguru import logger
 
+# Timezone support for DST-aware session detection
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+    ZONEINFO_AVAILABLE = True
+except ImportError:
+    try:
+        from backports.zoneinfo import ZoneInfo  # Fallback for older Python
+        ZONEINFO_AVAILABLE = True
+    except ImportError:
+        ZONEINFO_AVAILABLE = False
+        ZoneInfo = None
+        logger.warning("zoneinfo not available, using UTC-based session detection")
+
 # Optional vector database integration
 try:
     from src.data.vector_client import VectorClient
@@ -234,9 +247,12 @@ class IntraMonthRiskManager:
 
     Tracks real-time monthly P&L and adjusts quality requirements
     to prevent losing months through adaptive risk management.
+
+    Thresholds are PERCENTAGE-BASED for scalability across different account sizes.
     """
 
-    def __init__(self):
+    def __init__(self, balance: float = 50000.0):
+        self.balance = balance
         self.current_month = None
         self.monthly_pnl = 0.0
         self.monthly_peak = 0.0
@@ -245,6 +261,22 @@ class IntraMonthRiskManager:
         self.current_day = None
         self.month_stopped = False
         self.day_stopped = False
+
+        # Calculate percentage-based thresholds
+        self._update_thresholds()
+
+    def _update_thresholds(self):
+        """Update dollar thresholds based on current balance"""
+        # Percentage-based thresholds for scalability
+        self.loss_threshold_1 = self.balance * -0.003  # -0.3% = +5 quality
+        self.loss_threshold_2 = self.balance * -0.005  # -0.5% = +10 quality
+        self.loss_threshold_3 = self.balance * -0.007  # -0.7% = +15 quality
+        self.loss_stop = self.balance * -0.008         # -0.8% = stop trading
+
+    def update_balance(self, new_balance: float):
+        """Update balance and recalculate thresholds"""
+        self.balance = new_balance
+        self._update_thresholds()
 
     def new_trade_check(self, dt: datetime) -> Tuple[bool, int, str]:
         """
@@ -282,18 +314,19 @@ class IntraMonthRiskManager:
         # Calculate dynamic adjustment based on monthly P&L
         dynamic_adj = MIN_BASE_QUALITY_ADJUSTMENT
 
-        # Monthly loss circuit breaker
-        if self.monthly_pnl <= MONTHLY_LOSS_STOP:
+        # Monthly loss circuit breaker (percentage-based)
+        if self.monthly_pnl <= self.loss_stop:
             self.month_stopped = True
-            logger.warning(f"[Layer3] MONTH CIRCUIT BREAKER: ${self.monthly_pnl:.0f}")
-            return False, 0, f"MONTH_CIRCUIT_BREAKER (${self.monthly_pnl:.0f})"
+            pct = (self.monthly_pnl / self.balance) * 100 if self.balance > 0 else 0
+            logger.warning(f"[Layer3] MONTH CIRCUIT BREAKER: ${self.monthly_pnl:.0f} ({pct:.1f}%)")
+            return False, 0, f"MONTH_CIRCUIT_BREAKER (${self.monthly_pnl:.0f} = {pct:.1f}%)"
 
-        # Monthly loss thresholds
-        if self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_3:
+        # Monthly loss thresholds (percentage-based)
+        if self.monthly_pnl <= self.loss_threshold_3:
             dynamic_adj += 15
-        elif self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_2:
+        elif self.monthly_pnl <= self.loss_threshold_2:
             dynamic_adj += 10
-        elif self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_1:
+        elif self.monthly_pnl <= self.loss_threshold_1:
             dynamic_adj += 5
 
         # Adjustment for consecutive losses
@@ -712,8 +745,20 @@ class H1V64GBPUSDExecutor:
         self.current_position = None
         self.last_signal_time = None
 
-        # Layer 3 & 4: Risk managers
-        self.intra_month_manager = IntraMonthRiskManager()
+        # Get account balance for percentage-based risk management
+        initial_balance = 50000.0  # Default
+        if mt5_connector is not None:
+            try:
+                # Use sync version since __init__ is not async
+                account_info = mt5_connector.get_account_info_sync()
+                if account_info and 'balance' in account_info:
+                    initial_balance = account_info['balance']
+                    logger.info(f"Account balance for risk calc: ${initial_balance:,.2f}")
+            except Exception as e:
+                logger.warning(f"Could not get account balance: {e}, using default ${initial_balance:,.0f}")
+
+        # Layer 3 & 4: Risk managers (percentage-based thresholds)
+        self.intra_month_manager = IntraMonthRiskManager(balance=initial_balance)
         self.pattern_filter = PatternBasedFilter()
         self.current_month_key = None
 
@@ -1038,14 +1083,51 @@ class H1V64GBPUSDExecutor:
         """
         Check if current time is in kill zone.
 
-        Note: Hour 7 & 11 are blocked by HOUR_MULTIPLIERS = 0.0 (not here)
-        This function only defines the active trading windows.
+        DST-Aware: Uses actual London/New York local times to handle
+        Daylight Saving Time transitions correctly.
+
+        Kill Zones (local times):
+        - London: 08:00-11:00 London time (peak liquidity)
+        - New York: 08:00-12:00 NY time (US market open)
+
+        Note: Hour 7 & 11 UTC are blocked by HOUR_MULTIPLIERS = 0.0
         """
+        if ZONEINFO_AVAILABLE and ZoneInfo is not None:
+            # DST-aware session detection
+            try:
+                london_tz = ZoneInfo('Europe/London')
+                ny_tz = ZoneInfo('America/New_York')
+
+                # Ensure dt has timezone info
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+
+                # Convert to local times
+                london_time = dt.astimezone(london_tz)
+                ny_time = dt.astimezone(ny_tz)
+
+                # London session: 08:00-10:59 London local time
+                if 8 <= london_time.hour <= 10:
+                    return True, "london"
+
+                # New York session: 08:00-11:59 NY local time
+                if 8 <= ny_time.hour <= 11:
+                    return True, "newyork"
+
+                # Overlap check: London 14:00-16:00 AND NY morning
+                if 14 <= london_time.hour <= 16 and 9 <= ny_time.hour <= 11:
+                    return True, "overlap"
+
+                return False, ""
+
+            except Exception as e:
+                logger.warning(f"DST calculation failed: {e}, falling back to UTC")
+                # Fall through to UTC-based logic
+
+        # Fallback: UTC-based (original logic)
         hour = dt.hour
-        # London session: Hours 8-10 (Hour 7 & 11 blocked by HOUR_MULTIPLIERS)
         if hour in [8, 9, 10]:
             return True, "london"
-        # New York session: Hours 13-17
         elif 13 <= hour <= 17:
             return True, "newyork"
         return False, ""
@@ -1276,6 +1358,16 @@ class H1V64GBPUSDExecutor:
     async def record_trade_result(self, pnl: float, direction: str):
         """Record trade result for Layer 3 & 4 tracking"""
         now = datetime.now(timezone.utc)
+
+        # Update balance for percentage-based thresholds
+        if self.mt5 is not None:
+            try:
+                account_info = self.mt5.get_account_info_sync()
+                if account_info and 'balance' in account_info:
+                    new_balance = account_info['balance']
+                    self.intra_month_manager.update_balance(new_balance)
+            except Exception as e:
+                logger.debug(f"Could not update balance: {e}")
 
         # Layer 3: Record for intra-month tracking
         self.intra_month_manager.record_trade(pnl, now)

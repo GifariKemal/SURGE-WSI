@@ -869,6 +869,33 @@ class TelegramNotifier:
             logger.error(f"Telegram init failed: {e}")
             return False
 
+    def _is_authorized(self, update: Update) -> bool:
+        """Check if the user is authorized to use commands.
+
+        Security: Only allow commands from the configured chat_id.
+        This prevents unauthorized users from controlling the bot.
+        """
+        if not update.message or not update.message.from_user:
+            return False
+
+        user_id = str(update.message.from_user.id)
+        chat_id = str(self.chat_id)
+
+        # Allow if user ID matches chat_id (for private chats)
+        # or if message comes from the configured chat (for groups)
+        message_chat_id = str(update.message.chat_id)
+
+        is_authorized = (user_id == chat_id) or (message_chat_id == chat_id)
+
+        if not is_authorized:
+            logger.warning(f"Unauthorized command attempt from user {user_id} in chat {message_chat_id}")
+
+        return is_authorized
+
+    async def _unauthorized_response(self, update: Update):
+        """Send unauthorized response"""
+        await update.message.reply_text("Unauthorized. This incident has been logged.")
+
     async def start_polling(self):
         """Start polling for commands"""
         if not TELEGRAM_AVAILABLE or not self._bot:
@@ -1037,9 +1064,12 @@ class TelegramNotifier:
         except Exception as e:
             logger.error(f"Telegram send document failed: {e}")
 
-    # Command handlers - with exception handling
+    # Command handlers - with exception handling and authentication
     async def _handle_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /status command"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_status:
                 status = await self.on_status()
@@ -1052,6 +1082,9 @@ class TelegramNotifier:
 
     async def _handle_balance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /balance command"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_balance:
                 balance = await self.on_balance()
@@ -1064,6 +1097,9 @@ class TelegramNotifier:
 
     async def _handle_positions(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /positions command"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_positions:
                 positions = await self.on_positions()
@@ -1076,6 +1112,9 @@ class TelegramNotifier:
 
     async def _handle_regime(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /regime command"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_regime:
                 regime = await self.on_regime()
@@ -1088,6 +1127,9 @@ class TelegramNotifier:
 
     async def _handle_pois(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /pois command"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_pois:
                 pois = await self.on_pois()
@@ -1100,6 +1142,9 @@ class TelegramNotifier:
 
     async def _handle_activity(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /activity command - Intelligent Activity Filter status"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_activity:
                 activity = await self.on_activity()
@@ -1112,6 +1157,9 @@ class TelegramNotifier:
 
     async def _handle_market(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /market command - Comprehensive market analysis"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_market:
                 # Send "analyzing" message first
@@ -1126,6 +1174,9 @@ class TelegramNotifier:
 
     async def _handle_mode(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /mode command"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_mode:
                 mode = await self.on_mode()
@@ -1137,7 +1188,10 @@ class TelegramNotifier:
             await update.message.reply_text(f"Error: {e}")
 
     async def _handle_force_auto(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /force_auto command"""
+        """Handle /force_auto command - CRITICAL: Requires authentication"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_force_auto:
                 await self.on_force_auto()
@@ -1152,7 +1206,10 @@ class TelegramNotifier:
             await update.message.reply_text(f"Error: {e}")
 
     async def _handle_force_signal(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /force_signal command"""
+        """Handle /force_signal command - CRITICAL: Requires authentication"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_force_signal:
                 await self.on_force_signal()
@@ -1167,7 +1224,10 @@ class TelegramNotifier:
             await update.message.reply_text(f"Error: {e}")
 
     async def _handle_pause(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /pause command"""
+        """Handle /pause command - CRITICAL: Requires authentication"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_pause:
                 await self.on_pause()
@@ -1182,7 +1242,10 @@ class TelegramNotifier:
             await update.message.reply_text(f"Error: {e}")
 
     async def _handle_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /resume command"""
+        """Handle /resume command - CRITICAL: Requires authentication"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_resume:
                 await self.on_resume()
@@ -1197,7 +1260,10 @@ class TelegramNotifier:
             await update.message.reply_text(f"Error: {e}")
 
     async def _handle_close_all(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /close_all command"""
+        """Handle /close_all command - CRITICAL: Requires authentication"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_close_all:
                 result = await self.on_close_all()
@@ -1209,7 +1275,10 @@ class TelegramNotifier:
             await update.message.reply_text(f"Error: {e}")
 
     async def _handle_test_buy(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /test_buy command"""
+        """Handle /test_buy command - CRITICAL: Requires authentication"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_test_buy:
                 result = await self.on_test_buy()
@@ -1221,7 +1290,10 @@ class TelegramNotifier:
             await update.message.reply_text(f"Error: {e}")
 
     async def _handle_test_sell(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /test_sell command"""
+        """Handle /test_sell command - CRITICAL: Requires authentication"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_test_sell:
                 result = await self.on_test_sell()
@@ -1234,6 +1306,9 @@ class TelegramNotifier:
 
     async def _handle_autotrading(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /autotrading command"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_autotrading:
                 result = await self.on_autotrading()
@@ -1246,6 +1321,9 @@ class TelegramNotifier:
 
     async def _handle_layers(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /layers command - QUAD-LAYER status"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_layers:
                 result = await self.on_layers()
@@ -1258,6 +1336,9 @@ class TelegramNotifier:
 
     async def _handle_trades(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /trades command - Recent trade history"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_trades:
                 result = await self.on_trades()
@@ -1270,6 +1351,9 @@ class TelegramNotifier:
 
     async def _handle_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /stats command - Trading statistics"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_stats:
                 result = await self.on_stats()
@@ -1282,6 +1366,9 @@ class TelegramNotifier:
 
     async def _handle_daily(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /daily command - Daily summary"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_daily:
                 result = await self.on_daily()
@@ -1294,6 +1381,9 @@ class TelegramNotifier:
 
     async def _handle_monthly(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /monthly command - Monthly summary"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_monthly:
                 result = await self.on_monthly()
@@ -1306,6 +1396,9 @@ class TelegramNotifier:
 
     async def _handle_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /history command - MT5 trade history"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_history:
                 result = await self.on_history()
@@ -1318,6 +1411,9 @@ class TelegramNotifier:
 
     async def _handle_config(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /config command - Configuration"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_config:
                 result = await self.on_config()
@@ -1329,7 +1425,10 @@ class TelegramNotifier:
             await update.message.reply_text(f"Error: {e}")
 
     async def _handle_reset_l4(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /reset_l4 command - Reset Layer 4 pattern filter"""
+        """Handle /reset_l4 command - Reset Layer 4 pattern filter - CRITICAL: Requires auth"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_reset_l4:
                 result = await self.on_reset_l4()
@@ -1342,6 +1441,9 @@ class TelegramNotifier:
 
     async def _handle_vector(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /vector command - Vector DB status"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_vector:
                 result = await self.on_vector()
@@ -1353,7 +1455,10 @@ class TelegramNotifier:
             await update.message.reply_text(f"Error: {e}")
 
     async def _handle_sync(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /sync command - Manual vector sync"""
+        """Handle /sync command - Manual vector sync - CRITICAL: Requires auth"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_sync:
                 await update.message.reply_text("🔄 <i>Syncing vector database...</i>", parse_mode='HTML')
@@ -1367,6 +1472,9 @@ class TelegramNotifier:
 
     async def _handle_similar(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /similar command - Find similar patterns"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_similar:
                 await update.message.reply_text("🔍 <i>Searching similar patterns...</i>", parse_mode='HTML')
@@ -1380,6 +1488,9 @@ class TelegramNotifier:
 
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
+        if not self._is_authorized(update):
+            await self._unauthorized_response(update)
+            return
         try:
             if self.on_help:
                 # Use custom help handler

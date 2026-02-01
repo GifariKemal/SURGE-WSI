@@ -23,6 +23,6 @@ echo Tekan Ctrl+C untuk cancel, atau
 pause
 
 cd /d %~dp0
-python main.py --live --interval 300
+python GBPUSD_H1_QuadLayer_Final.py --live --interval 300
 
 pause

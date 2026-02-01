@@ -1,11 +1,11 @@
 //+------------------------------------------------------------------+
 //|                                    GBPUSD_H1_QuadLayer_v69.mq5   |
 //|                                    SURGE-WSI Trading System      |
-//|                                    Version 6.9 - Quad Layer      |
+//|                                    Version 6.95 - Full Sync      |
 //+------------------------------------------------------------------+
 #property copyright "SURGE-WSI"
 #property link      "https://github.com/surge-wsi"
-#property version   "6.93"
+#property version   "6.95"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -36,6 +36,17 @@ input group "=== Entry Signals ==="
 input bool     UseOrderBlock = true;        // Use Order Block Entry
 input bool     UseEmaPullback = true;       // Use EMA Pullback Entry
 input double   MinQuality = 60.0;           // Minimum Signal Quality
+input bool     UseEntryTrigger = true;      // Require Entry Trigger (MOMENTUM/ENGULF/LOWER_HIGH)
+
+input group "=== Layer 3: Intra-Month Risk ==="
+input double   MonthlyLossStop = -400.0;    // Monthly loss circuit breaker ($)
+input int      ConsecLossMax = 6;           // Max consecutive losses before day stop
+
+input group "=== Layer 4: Pattern Filter ==="
+input bool     UsePatternFilter = true;     // Enable Pattern-Based Filter
+input int      WarmupTrades = 15;           // Warmup trades (observe only)
+input double   RollingWRHalt = 0.10;        // Rolling WR threshold for halt
+input int      RollingWindow = 10;          // Rolling window size
 
 input group "=== Session Filter ==="
 input bool     UseSessionFilter = true;     // Enable Session Filter
@@ -89,12 +100,515 @@ double HourMultipliers[24] = {
    0.3, 0.0, 0.0, 0.0, 0.0, 0.0   // 18-23
 };
 
+// Layer 1: Monthly Tradeable Percentage (from market analysis)
+// Higher = better conditions, lower = increase quality requirement
+double MonthlyTradeablePct[12] = {
+   65,  // Jan - OK
+   55,  // Feb - POOR! (needs +15 quality)
+   70,  // Mar - Good
+   70,  // Apr - Pattern filter handles choppy
+   62,  // May - Below avg
+   68,  // Jun - OK
+   78,  // Jul - Good
+   65,  // Aug - Average
+   72,  // Sep - Good
+   58,  // Oct - Below avg
+   66,  // Nov - OK
+   60   // Dec - Low (holidays)
+};
+
+// Layer 1: Monthly Risk Multipliers (lot size adjustment)
+double MonthlyRiskMult[12] = {
+   0.9,   // Jan
+   0.6,   // Feb - lowered due to poor conditions
+   0.8,   // Mar
+   1.0,   // Apr
+   0.7,   // May
+   0.85,  // Jun
+   1.0,   // Jul
+   0.75,  // Aug
+   0.9,   // Sep
+   0.6,   // Oct
+   0.75,  // Nov
+   0.8    // Dec
+};
+
+// Layer 2: Technical Market Condition Thresholds (from Python)
+#define ATR_STABILITY_THRESHOLD    0.25   // ATR coefficient of variation
+#define EFFICIENCY_THRESHOLD       0.08   // Price movement efficiency
+#define TREND_STRENGTH_THRESHOLD   25.0   // ADX threshold
+#define BASE_QUALITY_GOOD          60     // Good market conditions
+#define BASE_QUALITY_NORMAL        65     // Normal conditions
+#define BASE_QUALITY_BAD           80     // Bad conditions - need higher signal quality
+
+// Layer 3: Intra-Month Risk Manager State
+int    currentMonth = 0;
+int    currentDay = 0;
+double monthlyPnL = 0.0;
+int    consecutiveLosses = 0;
+bool   monthStopped = false;
+bool   dayStopped = false;
+
+// Layer 4: Pattern Filter State
+struct TradeRecord {
+   string direction;
+   double pnl;
+   datetime time;
+};
+TradeRecord tradeHistory[50];
+int         tradeHistoryCount = 0;
+bool        patternHalted = false;
+bool        inRecovery = false;
+int         recoveryWins = 0;
+
 //+------------------------------------------------------------------+
 //| Check if running in Strategy Tester                               |
 //+------------------------------------------------------------------+
 bool IsBacktest()
 {
    return MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION);
+}
+
+//+------------------------------------------------------------------+
+//| LAYER 1: Get Monthly Quality Adjustment                           |
+//| Based on historical tradeable percentage                          |
+//+------------------------------------------------------------------+
+int GetMonthlyQualityAdjustment(int month)
+{
+   // month is 1-12, array is 0-11
+   double tradeable = MonthlyTradeablePct[month - 1];
+
+   if(tradeable < 30)
+      return 50;  // NO TRADE
+   else if(tradeable < 40)
+      return 35;  // HALT
+   else if(tradeable < 50)
+      return 25;  // Extreme
+   else if(tradeable < 60)
+      return 15;  // Very poor (Feb, Oct)
+   else if(tradeable < 70)
+      return 10;  // Below average
+   else if(tradeable < 75)
+      return 5;   // Slight
+   else
+      return 0;   // Good month
+}
+
+//+------------------------------------------------------------------+
+//| LAYER 1: Get Monthly Risk Multiplier                              |
+//+------------------------------------------------------------------+
+double GetMonthlyRiskMult(int month)
+{
+   return MonthlyRiskMult[month - 1];
+}
+
+//+------------------------------------------------------------------+
+//| LAYER 3: Check Intra-Month Risk Manager                           |
+//| Returns: 0=can trade, 1=month stopped, 2=day stopped              |
+//+------------------------------------------------------------------+
+int CheckIntraMonthRisk(datetime currentTime, int &dynamicAdj)
+{
+   MqlDateTime dt;
+   TimeToStruct(currentTime, dt);
+
+   int monthKey = dt.year * 100 + dt.mon;
+   int dayKey = dt.year * 10000 + dt.mon * 100 + dt.day;
+
+   // Reset for new month
+   if(monthKey != currentMonth)
+   {
+      currentMonth = monthKey;
+      monthlyPnL = 0.0;
+      consecutiveLosses = 0;
+      monthStopped = false;
+      dayStopped = false;
+   }
+
+   // Reset for new day
+   if(dayKey != currentDay)
+   {
+      currentDay = dayKey;
+      dayStopped = false;
+   }
+
+   // Check circuit breakers
+   if(monthStopped)
+      return 1;
+   if(dayStopped)
+      return 2;
+
+   // Calculate dynamic adjustment
+   dynamicAdj = 0;
+
+   // Monthly loss check
+   if(monthlyPnL <= MonthlyLossStop)
+   {
+      monthStopped = true;
+      Print("LAYER3: Month stopped at P&L $", monthlyPnL);
+      return 1;
+   }
+
+   // Consecutive loss check
+   if(consecutiveLosses >= ConsecLossMax)
+   {
+      dayStopped = true;
+      Print("LAYER3: Day stopped after ", consecutiveLosses, " consecutive losses");
+      return 2;
+   }
+
+   // Dynamic quality adjustments based on monthly P&L
+   if(monthlyPnL <= -350)
+      dynamicAdj = 15;
+   else if(monthlyPnL <= -250)
+      dynamicAdj = 10;
+   else if(monthlyPnL <= -150)
+      dynamicAdj = 5;
+
+   // Extra adjustment for consecutive losses
+   if(consecutiveLosses >= 3)
+      dynamicAdj += 5;
+
+   return 0;  // Can trade
+}
+
+//+------------------------------------------------------------------+
+//| LAYER 3: Record Trade for Intra-Month Tracking                    |
+//+------------------------------------------------------------------+
+void RecordTradeForRiskManager(double pnl)
+{
+   monthlyPnL += pnl;
+
+   if(pnl < 0)
+      consecutiveLosses++;
+   else
+      consecutiveLosses = 0;  // Reset on win
+
+   if(DebugMode)
+      Print("LAYER3: Monthly P&L = $", monthlyPnL, ", Consecutive Losses = ", consecutiveLosses);
+}
+
+//+------------------------------------------------------------------+
+//| LAYER 4: Get Rolling Win Rate                                     |
+//+------------------------------------------------------------------+
+double GetRollingWinRate()
+{
+   if(tradeHistoryCount < 3)
+      return 1.0;  // Not enough data
+
+   int lookback = MathMin(RollingWindow, tradeHistoryCount);
+   int wins = 0;
+
+   for(int i = tradeHistoryCount - lookback; i < tradeHistoryCount; i++)
+   {
+      if(tradeHistory[i].pnl > 0)
+         wins++;
+   }
+
+   return (double)wins / (double)lookback;
+}
+
+//+------------------------------------------------------------------+
+//| LAYER 4: Check Both Directions Failing                            |
+//+------------------------------------------------------------------+
+bool AreBothDirectionsFailing()
+{
+   if(tradeHistoryCount < 8)
+      return false;
+
+   int lookback = MathMin(8, tradeHistoryCount);
+   int buyLosses = 0, sellLosses = 0;
+
+   for(int i = tradeHistoryCount - lookback; i < tradeHistoryCount; i++)
+   {
+      if(tradeHistory[i].pnl < 0)
+      {
+         if(tradeHistory[i].direction == "BUY")
+            buyLosses++;
+         else
+            sellLosses++;
+      }
+   }
+
+   return (buyLosses >= 4 && sellLosses >= 4);
+}
+
+//+------------------------------------------------------------------+
+//| LAYER 4: Check Pattern Filter                                     |
+//| Returns: true=can trade, false=halted                             |
+//+------------------------------------------------------------------+
+bool CheckPatternFilter(string direction, double &sizeMult, int &extraQuality)
+{
+   sizeMult = 1.0;
+   extraQuality = 0;
+
+   if(!UsePatternFilter)
+      return true;
+
+   // During warmup, always allow
+   if(tradeHistoryCount < WarmupTrades)
+      return true;
+
+   // Check if halted
+   if(patternHalted && !inRecovery)
+      return false;
+
+   // Check both directions failing
+   if(AreBothDirectionsFailing())
+   {
+      patternHalted = true;
+      inRecovery = true;
+      recoveryWins = 0;
+      Print("LAYER4: HALT - Both directions failing");
+      return false;
+   }
+
+   // Check rolling win rate
+   double rollingWR = GetRollingWinRate();
+   if(rollingWR < RollingWRHalt)
+   {
+      patternHalted = true;
+      inRecovery = true;
+      recoveryWins = 0;
+      Print("LAYER4: HALT - Rolling WR too low: ", rollingWR * 100, "%");
+      return false;
+   }
+
+   // Recovery mode adjustments
+   if(inRecovery)
+   {
+      sizeMult = 0.5;      // Trade at 50% size
+      extraQuality = 5;    // Extra quality requirement
+   }
+   // Caution mode
+   else if(rollingWR < 0.25)
+   {
+      sizeMult = 0.6;      // Trade at 60% size
+      extraQuality = 3;
+   }
+
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| LAYER 4: Record Trade for Pattern Filter                          |
+//+------------------------------------------------------------------+
+void RecordTradeForPatternFilter(string direction, double pnl, datetime time)
+{
+   if(!UsePatternFilter)
+      return;
+
+   // Add to history
+   if(tradeHistoryCount < 50)
+   {
+      tradeHistory[tradeHistoryCount].direction = direction;
+      tradeHistory[tradeHistoryCount].pnl = pnl;
+      tradeHistory[tradeHistoryCount].time = time;
+      tradeHistoryCount++;
+   }
+   else
+   {
+      // Shift history
+      for(int i = 0; i < 49; i++)
+         tradeHistory[i] = tradeHistory[i+1];
+      tradeHistory[49].direction = direction;
+      tradeHistory[49].pnl = pnl;
+      tradeHistory[49].time = time;
+   }
+
+   // Track recovery
+   if(inRecovery)
+   {
+      if(pnl > 0)
+      {
+         recoveryWins++;
+         if(recoveryWins >= 1)  // Need 1 win to exit recovery
+         {
+            patternHalted = false;
+            inRecovery = false;
+            recoveryWins = 0;
+            Print("LAYER4: Recovery complete - resuming normal trading");
+         }
+      }
+      else
+      {
+         recoveryWins = 0;  // Reset on loss
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Check Entry Trigger (MOMENTUM, ENGULF, LOWER_HIGH)                |
+//+------------------------------------------------------------------+
+bool CheckEntryTrigger(int direction, string &entryType)
+{
+   if(!UseEntryTrigger)
+   {
+      entryType = "DIRECT";
+      return true;
+   }
+
+   double open1 = iOpen(_Symbol, PERIOD_H1, 1);
+   double close1 = iClose(_Symbol, PERIOD_H1, 1);
+   double high1 = iHigh(_Symbol, PERIOD_H1, 1);
+   double low1 = iLow(_Symbol, PERIOD_H1, 1);
+
+   double open2 = iOpen(_Symbol, PERIOD_H1, 2);
+   double close2 = iClose(_Symbol, PERIOD_H1, 2);
+   double high2 = iHigh(_Symbol, PERIOD_H1, 2);
+
+   double range1 = high1 - low1;
+   if(range1 < 0.0003)
+      return false;
+
+   double body1 = MathAbs(close1 - open1);
+   double prevBody = MathAbs(close2 - open2);
+   bool isBullish = close1 > open1;
+   bool isBearish = close1 < open1;
+   bool prevBullish = close2 > open2;
+   bool prevBearish = close2 < open2;
+
+   // MOMENTUM: Strong candle with body > 50% of range
+   if(body1 > range1 * 0.5)
+   {
+      if(direction > 0 && isBullish)
+      {
+         entryType = "MOMENTUM";
+         return true;
+      }
+      if(direction < 0 && isBearish)
+      {
+         entryType = "MOMENTUM";
+         return true;
+      }
+   }
+
+   // ENGULF: Current body > previous body * 1.2 with reversal
+   if(body1 > prevBody * 1.2)
+   {
+      if(direction > 0 && isBullish && prevBearish)
+      {
+         entryType = "ENGULF";
+         return true;
+      }
+      if(direction < 0 && isBearish && prevBullish)
+      {
+         entryType = "ENGULF";
+         return true;
+      }
+   }
+
+   // LOWER_HIGH: For SELL - current high lower than previous high
+   if(direction < 0 && high1 < high2 && isBearish)
+   {
+      entryType = "LOWER_HIGH";
+      return true;
+   }
+
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| LAYER 2: Assess Technical Market Condition                        |
+//| Returns: technical quality baseline (60-80)                       |
+//| Also returns market label for debugging                           |
+//+------------------------------------------------------------------+
+int AssessTechnicalCondition(string &marketLabel)
+{
+   int lookback = 20;
+
+   // 1. Calculate ATR Stability (coefficient of variation)
+   double atrValues[];
+   ArraySetAsSeries(atrValues, true);
+   if(CopyBuffer(atrHandle, 0, 1, lookback, atrValues) < lookback)
+   {
+      marketLabel = "NO_DATA";
+      return BASE_QUALITY_NORMAL;
+   }
+
+   double atrSum = 0, atrSumSq = 0;
+   for(int i = 0; i < lookback; i++)
+   {
+      atrSum += atrValues[i];
+      atrSumSq += atrValues[i] * atrValues[i];
+   }
+   double atrMean = atrSum / lookback;
+   double atrVariance = (atrSumSq / lookback) - (atrMean * atrMean);
+   double atrStd = MathSqrt(MathMax(0, atrVariance));
+   double atrCV = (atrMean > 0) ? atrStd / atrMean : 0.5;
+
+   // 2. Calculate Price Efficiency (net move / total move)
+   double closes[];
+   ArraySetAsSeries(closes, true);
+   if(CopyClose(_Symbol, PERIOD_H1, 1, lookback + 1, closes) < lookback + 1)
+   {
+      marketLabel = "NO_DATA";
+      return BASE_QUALITY_NORMAL;
+   }
+
+   double netMove = MathAbs(closes[0] - closes[lookback]);
+   double totalMove = 0;
+   for(int i = 0; i < lookback; i++)
+   {
+      totalMove += MathAbs(closes[i] - closes[i + 1]);
+   }
+   double efficiency = (totalMove > 0) ? netMove / totalMove : 0.1;
+
+   // 3. Get Trend Strength from ADX
+   double adxValues[];
+   ArraySetAsSeries(adxValues, true);
+   if(CopyBuffer(adxHandle, 0, 1, 3, adxValues) < 3)
+   {
+      marketLabel = "NO_DATA";
+      return BASE_QUALITY_NORMAL;
+   }
+   double trendStrength = adxValues[0];
+
+   // 4. Calculate technical score (0-100)
+   int score = 0;
+
+   // ATR Stability: Lower CV = more stable = better
+   if(atrCV < ATR_STABILITY_THRESHOLD)
+      score += 33;
+   else if(atrCV < ATR_STABILITY_THRESHOLD * 1.5)
+      score += 20;
+
+   // Price Efficiency: Higher = more trending = better
+   if(efficiency > EFFICIENCY_THRESHOLD)
+      score += 33;
+   else if(efficiency > EFFICIENCY_THRESHOLD * 0.5)
+      score += 20;
+
+   // Trend Strength: Higher ADX = stronger trend = better
+   if(trendStrength > TREND_STRENGTH_THRESHOLD)
+      score += 34;
+   else if(trendStrength > TREND_STRENGTH_THRESHOLD * 0.7)
+      score += 20;
+
+   // 5. Determine technical quality baseline
+   int technicalQuality;
+   if(score >= 80)
+   {
+      technicalQuality = BASE_QUALITY_GOOD;  // 60 - Good conditions
+      marketLabel = "GOOD";
+   }
+   else if(score >= 40)
+   {
+      technicalQuality = BASE_QUALITY_NORMAL;  // 65 - Normal conditions
+      marketLabel = "NORMAL";
+   }
+   else
+   {
+      technicalQuality = BASE_QUALITY_BAD;  // 80 - Bad conditions, need high quality
+      marketLabel = "BAD";
+   }
+
+   if(DebugMode)
+      Print("LAYER2: ATR_CV=", DoubleToString(atrCV, 3),
+            " Efficiency=", DoubleToString(efficiency, 3),
+            " ADX=", DoubleToString(trendStrength, 1),
+            " Score=", score, " -> ", marketLabel, " (Q=", technicalQuality, ")");
+
+   return technicalQuality;
 }
 
 //+------------------------------------------------------------------+
@@ -204,10 +718,16 @@ int OnInit()
       return INIT_FAILED;
    }
 
-   Print("=== GBPUSD H1 QuadLayer v6.9 initialized ===");
+   Print("=== GBPUSD H1 QuadLayer v6.992 (Debug) initialized ===");
    Print("Risk: ", RiskPercent, "% | Max Loss (SL_CAPPED): ", MaxLossPercent, "% | SL: ", SL_ATR_Mult, "x ATR | TP: ", TP_Ratio, ":1");
    Print("Trading Hours (UTC): London ", LondonStart, "-", LondonEnd, " | NY ", NewYorkStart, "-", NewYorkEnd);
    Print("Day Multipliers: Mon=1.0, Tue=0.9, Wed=1.0, Thu=0.8, Fri=0.3");
+   Print("--- QUAD-LAYER QUALITY FILTER ---");
+   Print("Layer 1: Monthly Profile (quality adj by month)");
+   Print("Layer 2: Technical (ATR stability, efficiency, trend)");
+   Print("Layer 3: Intra-Month Risk (stop at $", MonthlyLossStop, ", ", ConsecLossMax, " consec losses)");
+   Print("Layer 4: Pattern Filter (halt at ", RollingWRHalt*100, "% WR, warmup=", WarmupTrades, ")");
+   Print("Entry Trigger: ", UseEntryTrigger ? "ENABLED (MOMENTUM/ENGULF/LOWER_HIGH)" : "DISABLED");
 
    return INIT_SUCCEEDED;
 }
@@ -223,7 +743,7 @@ void OnDeinit(const int reason)
    IndicatorRelease(rsiHandle);
    IndicatorRelease(adxHandle);
 
-   Print("GBPUSD H1 QuadLayer v6.9 deinitialized");
+   Print("GBPUSD H1 QuadLayer v6.991 deinitialized");
 }
 
 //+------------------------------------------------------------------+
@@ -233,9 +753,28 @@ void OnTick()
 {
    // Only trade on new bar
    static datetime lastBar = 0;
+   static datetime firstBar = 0;  // Track first bar of backtest
+   static int barCount = 0;       // Count bars since start
+
    datetime currentBar = iTime(_Symbol, PERIOD_H1, 0);
    if(lastBar == currentBar) return;
    lastBar = currentBar;
+
+   // Initialize first bar tracking
+   if(firstBar == 0)
+   {
+      firstBar = currentBar;
+      barCount = 0;
+   }
+   barCount++;
+
+   // SYNC FIX: 100-bar warmup period to match Python backtest
+   // Python starts at bar 100, so we skip first 100 bars
+   if(barCount < 100)
+   {
+      if(DebugMode) Print("DEBUG: Warmup - bar ", barCount, "/100");
+      return;
+   }
 
    // Check if we already have a position
    if(HasOpenPosition()) return;
@@ -288,6 +827,22 @@ void OnTick()
       return;
    }
 
+   // ============================================================
+   // LAYER 3: Check Intra-Month Risk Manager
+   // ============================================================
+   int dynamicAdj = 0;
+   int riskCheck = CheckIntraMonthRisk(TimeCurrent(), dynamicAdj);
+   if(riskCheck == 1)
+   {
+      if(DebugMode) Print("DEBUG: Skipped - Month stopped (Layer 3)");
+      return;
+   }
+   if(riskCheck == 2)
+   {
+      if(DebugMode) Print("DEBUG: Skipped - Day stopped (Layer 3)");
+      return;
+   }
+
    // Get indicator values
    double atr[], emaFast[], emaSlow[], rsi[], adxMain[];
    ArraySetAsSeries(atr, true);
@@ -328,127 +883,250 @@ void OnTick()
       return;
    }
 
+   // ============================================================
+   // LAYER 2: Technical Market Condition Assessment
+   // ============================================================
+   string marketLabel = "";
+   int technicalQuality = AssessTechnicalCondition(marketLabel);
+
+   // SYNC FIX v6.99: Python allows BAD market trades with higher quality threshold
+   // Previously MQL5 completely rejected BAD conditions, but Python continues
+   // with technicalQuality = 80 (requiring higher quality signals)
+   // REMOVED: Early return for BAD conditions
+   if(DebugMode && technicalQuality >= BASE_QUALITY_BAD)
+      Print("DEBUG: BAD conditions - using higher quality threshold (", technicalQuality, ")");
+
+   // ============================================================
+   // LAYER 1: Monthly Quality Adjustment
+   // ============================================================
+   int monthlyAdj = GetMonthlyQualityAdjustment(dt.mon);
+
+   // Combined quality threshold: Technical base + Monthly adj + Dynamic adj
+   double effectiveMinQuality = technicalQuality + monthlyAdj + dynamicAdj;
+
+   if(DebugMode && (monthlyAdj > 0 || dynamicAdj > 0))
+      Print("DEBUG: Quality adjusted: tech=", technicalQuality, " + monthly=", monthlyAdj, " + dynamic=", dynamicAdj, " = ", effectiveMinQuality);
+
    // Check for entry signals
    int signal = 0;
    string signalType = "";
    double quality = 0;
 
-   // Entry Signal 1: Order Block
-   if(UseOrderBlock)
-   {
-      int obSignal = CheckOrderBlock(quality);
-      if(obSignal != 0 && quality >= MinQuality)
-      {
-         // Session filter for Order Block (using UTC hour)
-         if(UseSessionFilter)
-         {
-            if(SkipOB_Hour8 && utcHour == 8)
-            {
-               if(DebugMode) Print("DEBUG: ORDER_BLOCK filtered by Session POI (Hour 8)");
-               obSignal = 0;
-            }
-            if(SkipOB_Hour16 && utcHour == 16)
-            {
-               if(DebugMode) Print("DEBUG: ORDER_BLOCK filtered by Session POI (Hour 16)");
-               obSignal = 0;
-            }
-         }
+   // ============================================================
+   // SIGNAL PRIORITY: EMA Pullback FIRST (74% of trades in Python)
+   // ============================================================
 
-         if(obSignal != 0 && ((obSignal > 0 && regime > 0) || (obSignal < 0 && regime < 0)))
+   // Entry Signal 1: EMA Pullback (higher priority - better quality)
+   if(UseEmaPullback)
+   {
+      // Session filter BEFORE detection (like Python)
+      bool skipEMA = false;
+      if(UseSessionFilter)
+      {
+         if(SkipEMA_Hour13 && utcHour == 13) skipEMA = true;
+         if(SkipEMA_Hour14 && utcHour == 14) skipEMA = true;
+      }
+
+      if(!skipEMA)
+      {
+         int emaSignal = CheckEmaPullback(emaFast, emaSlow, rsi, adxMain, atrPips, quality);
+         // Debug for Jan 8
+         if(dt.year == 2025 && dt.mon == 1 && dt.day == 8 && dt.hour == 15)
          {
-            signal = obSignal;
-            signalType = "ORDER_BLOCK";
+            Print("DEBUG Jan8 15:00 EMA: signal=", emaSignal, " quality=", quality,
+                  " minQ=", effectiveMinQuality, " regime=", regime);
          }
-         else if(obSignal != 0 && DebugMode)
+         if(emaSignal != 0 && quality >= effectiveMinQuality)
          {
-            Print("DEBUG: ORDER_BLOCK rejected - regime mismatch (signal=", obSignal, ", regime=", regime, ")");
+            if((emaSignal > 0 && regime > 0) || (emaSignal < 0 && regime < 0))
+            {
+               signal = emaSignal;
+               signalType = "EMA_PULLBACK";
+            }
+            else if(DebugMode)
+            {
+               Print("DEBUG: EMA_PULLBACK rejected - regime mismatch (signal=", emaSignal, ", regime=", regime, ")");
+            }
          }
       }
    }
 
-   // Entry Signal 2: EMA Pullback
-   if(signal == 0 && UseEmaPullback)
+   // Entry Signal 2: Order Block (fallback if no EMA signal)
+   if(signal == 0 && UseOrderBlock)
    {
-      int emaSignal = CheckEmaPullback(emaFast, emaSlow, rsi, adxMain, atrPips, quality);
-      if(emaSignal != 0 && quality >= MinQuality)
+      // Session filter BEFORE detection (like Python)
+      bool skipOB = false;
+      if(UseSessionFilter)
       {
-         // Session filter for EMA Pullback (using UTC hour)
-         if(UseSessionFilter)
-         {
-            if(SkipEMA_Hour13 && utcHour == 13)
-            {
-               if(DebugMode) Print("DEBUG: EMA_PULLBACK filtered by Session POI (Hour 13)");
-               emaSignal = 0;
-            }
-            if(SkipEMA_Hour14 && utcHour == 14)
-            {
-               if(DebugMode) Print("DEBUG: EMA_PULLBACK filtered by Session POI (Hour 14)");
-               emaSignal = 0;
-            }
-         }
+         if(SkipOB_Hour8 && utcHour == 8) skipOB = true;
+         if(SkipOB_Hour16 && utcHour == 16) skipOB = true;
+      }
 
-         if(emaSignal != 0 && ((emaSignal > 0 && regime > 0) || (emaSignal < 0 && regime < 0)))
+      if(!skipOB)
+      {
+         int obSignal = CheckOrderBlock(quality);
+         // Debug for Jan 8
+         if(dt.year == 2025 && dt.mon == 1 && dt.day == 8 && dt.hour == 15)
          {
-            signal = emaSignal;
-            signalType = "EMA_PULLBACK";
+            Print("DEBUG Jan8 15:00 OB: signal=", obSignal, " quality=", quality,
+                  " minQ=", effectiveMinQuality, " regime=", regime);
          }
-         else if(emaSignal != 0 && DebugMode)
+         if(obSignal != 0 && quality >= effectiveMinQuality)
          {
-            Print("DEBUG: EMA_PULLBACK rejected - regime mismatch (signal=", emaSignal, ", regime=", regime, ")");
+            if((obSignal > 0 && regime > 0) || (obSignal < 0 && regime < 0))
+            {
+               signal = obSignal;
+               signalType = "ORDER_BLOCK";
+            }
+            else if(DebugMode)
+            {
+               Print("DEBUG: ORDER_BLOCK rejected - regime mismatch (signal=", obSignal, ", regime=", regime, ")");
+            }
          }
       }
    }
 
-   // Execute trade if signal found
-   if(signal != 0)
+   // No signal found
+   if(signal == 0)
    {
-      double riskMult = dayMult * hourMult * (quality / 100.0);
-      ExecuteTrade(signal, atr[1], riskMult, signalType);
+      // Debug: Log why no signal on specific date (Jan 8 15:00 server = 14:00 UTC)
+      if(dt.year == 2025 && dt.mon == 1 && dt.day == 8 && dt.hour == 15)
+      {
+         Print("DEBUG Jan8 15:00: No signal found. EMA checked: ", UseEmaPullback,
+               ", OB checked: ", UseOrderBlock, ", quality=", quality,
+               ", minQ=", effectiveMinQuality, ", regime=", regime);
+      }
+      return;
    }
+
+   // ============================================================
+   // Entry Trigger Check (MOMENTUM, ENGULF, LOWER_HIGH)
+   // ============================================================
+   string entryType = "";
+   if(!CheckEntryTrigger(signal, entryType))
+   {
+      if(DebugMode) Print("DEBUG: Skipped - No entry trigger (", signalType, ")");
+      return;
+   }
+
+   // ============================================================
+   // LAYER 4: Pattern Filter Check
+   // ============================================================
+   double patternSizeMult = 1.0;
+   int patternExtraQ = 0;
+   string direction = (signal > 0) ? "BUY" : "SELL";
+
+   if(!CheckPatternFilter(direction, patternSizeMult, patternExtraQ))
+   {
+      if(DebugMode) Print("DEBUG: Skipped - Pattern filter halt (Layer 4)");
+      return;
+   }
+
+   // Apply pattern extra quality
+   if(patternExtraQ > 0 && quality < effectiveMinQuality + patternExtraQ)
+   {
+      if(DebugMode) Print("DEBUG: Skipped - Quality below pattern threshold (", quality, " < ", effectiveMinQuality + patternExtraQ, ")");
+      return;
+   }
+
+   // ============================================================
+   // Execute Trade with all layer adjustments
+   // ============================================================
+   double monthRiskMult = GetMonthlyRiskMult(dt.mon);
+
+   // Technical quality multiplier: reduce risk in normal conditions, full risk in good
+   double techMult = (technicalQuality == BASE_QUALITY_GOOD) ? 1.0 : 0.8;
+
+   double riskMult = dayMult * hourMult * (quality / 100.0) * monthRiskMult * patternSizeMult * techMult;
+   ExecuteTrade(signal, atr[1], riskMult, signalType + "_" + entryType);
 }
 
 //+------------------------------------------------------------------+
-//| Check for Order Block signal                                      |
+//| Check for Order Block signal (SYNC v6.99: scan last 30 bars)     |
 //+------------------------------------------------------------------+
 int CheckOrderBlock(double &quality)
 {
-   double open1 = iOpen(_Symbol, PERIOD_H1, 1);
-   double close1 = iClose(_Symbol, PERIOD_H1, 1);
-   double high1 = iHigh(_Symbol, PERIOD_H1, 1);
-   double low1 = iLow(_Symbol, PERIOD_H1, 1);
+   // SYNC FIX: Python scans last 30 bars for Order Blocks, not just 2
+   // This matches: for i in range(len(df) - 30, len(df) - 2)
 
-   double open2 = iOpen(_Symbol, PERIOD_H1, 2);
-   double close2 = iClose(_Symbol, PERIOD_H1, 2);
-   double high2 = iHigh(_Symbol, PERIOD_H1, 2);
-   double low2 = iLow(_Symbol, PERIOD_H1, 2);
+   // SYNC FIX v6.991: Use bar 1 close for proximity check (matches Python)
+   // Python uses current_bar close (signal bar), which is bar 1 in MQL5
+   double currentClose = iClose(_Symbol, PERIOD_H1, 1);
+   int bestSignal = 0;
+   double bestQuality = 0;
+   double bestPrice = 0;
 
-   double range1 = high1 - low1;
-   if(range1 < 0.0003) return 0;
+   // SYNC FIX: Use current bar (bar 1) range for zone size, like Python does
+   double currentBarHigh = iHigh(_Symbol, PERIOD_H1, 1);
+   double currentBarLow = iLow(_Symbol, PERIOD_H1, 1);
+   double currentZoneSize = (currentBarHigh - currentBarLow) * 2;
 
-   double body1 = MathAbs(close1 - open1);
-   double bodyRatio = body1 / range1;
-
-   // Bullish Order Block: Previous bearish, current bullish engulf
-   if(close2 < open2) // Previous bearish
+   // Scan last 30 bars for Order Block formations
+   for(int i = 30; i >= 2; i--)
    {
-      if(close1 > open1 && bodyRatio > 0.55 && close1 > high2)
+      double open_curr = iOpen(_Symbol, PERIOD_H1, i);
+      double close_curr = iClose(_Symbol, PERIOD_H1, i);
+      double high_curr = iHigh(_Symbol, PERIOD_H1, i);
+      double low_curr = iLow(_Symbol, PERIOD_H1, i);
+
+      double open_next = iOpen(_Symbol, PERIOD_H1, i-1);
+      double close_next = iClose(_Symbol, PERIOD_H1, i-1);
+      double high_next = iHigh(_Symbol, PERIOD_H1, i-1);
+      double low_next = iLow(_Symbol, PERIOD_H1, i-1);
+
+      double range_next = high_next - low_next;
+      if(range_next < 0.0003) continue;
+
+      double body_next = MathAbs(close_next - open_next);
+      double bodyRatio = body_next / range_next;
+
+      // Bullish Order Block: Current bearish, next bullish engulf
+      if(close_curr < open_curr)  // Current bar bearish
       {
-         quality = bodyRatio * 100;
-         return 1; // BUY
+         if(close_next > open_next && bodyRatio > 0.55 && close_next > high_curr)
+         {
+            double obQuality = bodyRatio * 100;
+            double obPrice = low_curr;  // Order Block zone = low of bearish bar
+
+            // Check if current price is near the OB zone
+            double zoneSize = currentZoneSize;  // Use current bar's range, not OB bar's
+            if(MathAbs(currentClose - obPrice) <= zoneSize)
+            {
+               if(obQuality > bestQuality)
+               {
+                  bestSignal = 1;  // BUY
+                  bestQuality = obQuality;
+                  bestPrice = obPrice;
+               }
+            }
+         }
+      }
+
+      // Bearish Order Block: Current bullish, next bearish engulf
+      if(close_curr > open_curr)  // Current bar bullish
+      {
+         if(close_next < open_next && bodyRatio > 0.55 && close_next < low_curr)
+         {
+            double obQuality = bodyRatio * 100;
+            double obPrice = high_curr;  // Order Block zone = high of bullish bar
+
+            // Check if current price is near the OB zone
+            double zoneSize = currentZoneSize;  // Use current bar's range, not OB bar's
+            if(MathAbs(currentClose - obPrice) <= zoneSize)
+            {
+               if(obQuality > bestQuality)
+               {
+                  bestSignal = -1;  // SELL
+                  bestQuality = obQuality;
+                  bestPrice = obPrice;
+               }
+            }
+         }
       }
    }
 
-   // Bearish Order Block: Previous bullish, current bearish engulf
-   if(close2 > open2) // Previous bullish
-   {
-      if(close1 < open1 && bodyRatio > 0.55 && close1 < low2)
-      {
-         quality = bodyRatio * 100;
-         return -1; // SELL
-      }
-   }
-
-   return 0;
+   quality = bestQuality;
+   return bestSignal;
 }
 
 //+------------------------------------------------------------------+
@@ -600,6 +1278,64 @@ bool HasOpenPosition()
       }
    }
    return false;
+}
+
+//+------------------------------------------------------------------+
+//| OnTradeTransaction - Track closed trades for Layer 3 & 4          |
+//+------------------------------------------------------------------+
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest &request,
+                        const MqlTradeResult &result)
+{
+   // Only process deal additions (trade closures)
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
+      return;
+
+   // Get deal info
+   ulong dealTicket = trans.deal;
+   if(dealTicket == 0)
+      return;
+
+   // Select the deal
+   if(!HistoryDealSelect(dealTicket))
+      return;
+
+   // Check if it's our EA's deal
+   long dealMagic = HistoryDealGetInteger(dealTicket, DEAL_MAGIC);
+   if(dealMagic != MagicNumber)
+      return;
+
+   // Check if it's exit deal (not entry)
+   ENUM_DEAL_ENTRY dealEntry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(dealTicket, DEAL_ENTRY);
+   if(dealEntry != DEAL_ENTRY_OUT)
+      return;
+
+   // Get deal P&L
+   double dealProfit = HistoryDealGetDouble(dealTicket, DEAL_PROFIT);
+   double dealSwap = HistoryDealGetDouble(dealTicket, DEAL_SWAP);
+   double dealCommission = HistoryDealGetDouble(dealTicket, DEAL_COMMISSION);
+   double totalPnL = dealProfit + dealSwap + dealCommission;
+
+   // Get direction
+   ENUM_DEAL_TYPE dealType = (ENUM_DEAL_TYPE)HistoryDealGetInteger(dealTicket, DEAL_TYPE);
+   string direction = "";
+   // Exit deal type is opposite of position type
+   if(dealType == DEAL_TYPE_SELL)
+      direction = "BUY";   // Closing a BUY position
+   else if(dealType == DEAL_TYPE_BUY)
+      direction = "SELL";  // Closing a SELL position
+
+   // Record for Layer 3: Intra-Month Risk Manager
+   RecordTradeForRiskManager(totalPnL);
+
+   // Record for Layer 4: Pattern Filter
+   RecordTradeForPatternFilter(direction, totalPnL, TimeCurrent());
+
+   // Log
+   string exitType = (totalPnL >= 0) ? "TP" : "SL";
+   Print("Trade closed: ", direction, " | P&L: $", DoubleToString(totalPnL, 2),
+         " | Monthly: $", DoubleToString(monthlyPnL, 2),
+         " | Consec Losses: ", consecutiveLosses);
 }
 
 //+------------------------------------------------------------------+

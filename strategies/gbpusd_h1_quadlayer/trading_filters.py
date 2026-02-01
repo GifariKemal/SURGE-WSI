@@ -49,13 +49,21 @@ import numpy as np
 # CONFIGURATION - Layer 3 & 4
 # ============================================================
 
-# Layer 3: Intra-Month Dynamic Risk (original values)
-MONTHLY_LOSS_THRESHOLD_1 = -150.0  # +5 quality
-MONTHLY_LOSS_THRESHOLD_2 = -250.0  # +10 quality
-MONTHLY_LOSS_THRESHOLD_3 = -350.0  # +15 quality
-MONTHLY_LOSS_STOP = -400.0         # Stop trading
+# Layer 3: Intra-Month Dynamic Risk (percentage-based for scalability)
+# These percentages are relative to account balance
+MONTHLY_LOSS_PCT_1 = -0.3   # -0.3% of balance = +5 quality
+MONTHLY_LOSS_PCT_2 = -0.5   # -0.5% of balance = +10 quality
+MONTHLY_LOSS_PCT_3 = -0.7   # -0.7% of balance = +15 quality
+MONTHLY_LOSS_STOP_PCT = -0.8  # -0.8% of balance = Stop trading
 CONSECUTIVE_LOSS_THRESHOLD = 3     # +5 quality after 3 losses
 CONSECUTIVE_LOSS_DAY_STOP = 6      # Stop for day after 6 losses
+
+# Legacy fixed thresholds (for backward compatibility with $50k account)
+# Kept for reference: $50k * 0.3% = $150, etc.
+MONTHLY_LOSS_THRESHOLD_1 = -150.0  # Legacy
+MONTHLY_LOSS_THRESHOLD_2 = -250.0  # Legacy
+MONTHLY_LOSS_THRESHOLD_3 = -350.0  # Legacy
+MONTHLY_LOSS_STOP = -400.0         # Legacy
 
 # Layer 4: Pattern-Based Filter
 WARMUP_TRADES = 15                 # Trades before filter activates (same as original)
@@ -141,21 +149,27 @@ class IntraMonthRiskManager:
     Layer 3: Intra-Month Dynamic Risk Management
 
     Adjusts quality requirements and can halt trading based on:
-    - Monthly P&L (circuit breaker if loss > $400)
+    - Monthly P&L (circuit breaker if loss exceeds threshold)
     - Consecutive losses (halt for day if 6+ losses)
     - Dynamic quality adjustment based on current month performance
 
+    Thresholds are PERCENTAGE-BASED for scalability across different account sizes.
     State can be persisted via StateManager.
     """
 
-    def __init__(self, state_manager=None):
+    def __init__(self, state_manager=None, balance: float = 50000.0):
         """
         Initialize risk manager.
 
         Args:
             state_manager: Optional StateManager for persistence
+            balance: Account balance for calculating percentage-based thresholds
         """
         self.state_manager = state_manager
+        self.balance = balance
+
+        # Calculate dollar thresholds from percentages
+        self._update_thresholds()
 
         # Load state if available
         if state_manager:
@@ -172,6 +186,18 @@ class IntraMonthRiskManager:
             self.day_stopped = False
 
         self.last_trade_date = None
+
+    def _update_thresholds(self):
+        """Update dollar thresholds based on current balance"""
+        self.loss_threshold_1 = self.balance * MONTHLY_LOSS_PCT_1 / 100
+        self.loss_threshold_2 = self.balance * MONTHLY_LOSS_PCT_2 / 100
+        self.loss_threshold_3 = self.balance * MONTHLY_LOSS_PCT_3 / 100
+        self.loss_stop = self.balance * MONTHLY_LOSS_STOP_PCT / 100
+
+    def update_balance(self, new_balance: float):
+        """Update balance and recalculate thresholds"""
+        self.balance = new_balance
+        self._update_thresholds()
 
     def _check_new_month(self, dt: datetime):
         """Check if we've entered a new month and reset if needed"""
@@ -225,18 +251,19 @@ class IntraMonthRiskManager:
         # Calculate dynamic quality adjustment
         quality_adj = 0
 
-        # Adjustment based on monthly P&L
-        if self.monthly_pnl <= MONTHLY_LOSS_STOP:
+        # Adjustment based on monthly P&L (using percentage-based thresholds)
+        if self.monthly_pnl <= self.loss_stop:
             self.month_stopped = True
+            pct_loss = (self.monthly_pnl / self.balance) * 100 if self.balance > 0 else 0
             if self.state_manager:
-                self.state_manager.set_month_stopped(f"Loss ${self.monthly_pnl:.0f}")
-            return False, 0, f"MONTH_CIRCUIT_BREAKER (${self.monthly_pnl:.0f})"
+                self.state_manager.set_month_stopped(f"Loss ${self.monthly_pnl:.0f} ({pct_loss:.1f}%)")
+            return False, 0, f"MONTH_CIRCUIT_BREAKER (${self.monthly_pnl:.0f} = {pct_loss:.1f}%)"
 
-        elif self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_3:
+        elif self.monthly_pnl <= self.loss_threshold_3:
             quality_adj += 15
-        elif self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_2:
+        elif self.monthly_pnl <= self.loss_threshold_2:
             quality_adj += 10
-        elif self.monthly_pnl <= MONTHLY_LOSS_THRESHOLD_1:
+        elif self.monthly_pnl <= self.loss_threshold_1:
             quality_adj += 5
 
         # Adjustment based on consecutive losses
@@ -277,9 +304,13 @@ class IntraMonthRiskManager:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get current stats for display"""
+        pct_loss = (self.monthly_pnl / self.balance) * 100 if self.balance > 0 else 0
         return {
             "month": self.current_month,
             "monthly_pnl": self.monthly_pnl,
+            "monthly_pnl_pct": pct_loss,
+            "balance": self.balance,
+            "loss_stop_threshold": self.loss_stop,
             "consecutive_losses": self.consecutive_losses,
             "month_stopped": self.month_stopped,
             "day_stopped": self.day_stopped
@@ -444,11 +475,12 @@ class PatternBasedFilter:
             self.state_manager.clear_halt()
             self.state_manager.exit_recovery_mode()
 
-        # Keep trade_history for learning but cap at last 30 trades
-        if len(self.trade_history) > 30:
-            self.trade_history = self.trade_history[-30:]
+        # CLEAR trade_history on new month - fresh start each month
+        # Previously kept history which caused LOW_ROLLING_WR halts to persist
+        self.trade_history = []
+        self.trade_count = 0
 
-        logger.info(f"[Layer4] Reset for month {month}, history: {len(self.trade_history)} trades")
+        logger.info(f"[Layer4] Reset for month {month}, fresh start")
 
     def check_trade(self, direction: str) -> Tuple[bool, int, float, str]:
         """

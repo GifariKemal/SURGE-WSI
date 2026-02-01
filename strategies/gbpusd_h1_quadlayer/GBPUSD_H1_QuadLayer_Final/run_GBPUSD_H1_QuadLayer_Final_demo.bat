@@ -13,6 +13,6 @@ echo ============================================================
 echo.
 
 cd /d %~dp0
-python main.py --demo --interval 300
+python GBPUSD_H1_QuadLayer_Final.py --demo --interval 300
 
 pause
