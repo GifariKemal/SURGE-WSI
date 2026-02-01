@@ -46,6 +46,13 @@ loguru>=0.7.2
 python-dotenv>=1.0.0
 
 # ============================================
+# BACKTESTING LIBRARIES
+# ============================================
+
+# Backtrader (realistic backtesting with commission/slippage)
+backtrader>=1.9.78.123
+
+# ============================================
 # DEVELOPMENT DEPENDENCIES (Optional)
 # ============================================
 

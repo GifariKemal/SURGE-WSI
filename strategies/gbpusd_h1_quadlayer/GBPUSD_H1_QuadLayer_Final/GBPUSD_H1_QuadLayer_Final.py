@@ -222,7 +222,7 @@ class TradingBot:
             status = self.executor.get_status()
             now = datetime.now(timezone.utc)
             adj = self.executor.risk_scorer.get_monthly_quality_adjustment(now)
-            tradeable = {0: "75%+", 5: "70-75%", 10: "60-70%", 15: "<60%"}.get(adj, "Unknown")
+            tradeable = {0: "75%+", 5: "70-75%", 10: "60-70%", 15: "&lt;60%"}.get(adj, "Unknown")
 
             # Get Layer 3 & 4 status
             l3_status = status.get('layer3_status', {})

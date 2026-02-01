@@ -169,7 +169,20 @@
       "Bash(cmd /c \"C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI\\\\strategies\\\\rsi_v37_optimized\\\\run_deep_analysis.bat\")",
       "WebFetch(domain:www.signalstart.com)",
       "Bash(\"C:\\\\Program Files\\\\MetaTrader 5\\\\metaeditor64.exe\" /compile:\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Roaming\\\\MetaQuotes\\\\Terminal\\\\C84535A6B43B3F94C032314C1C9A9F5B\\\\MQL5\\\\Experts\\\\RSI_v37_Original_v3.mq5\" /log:\"C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI\\\\compile_log_v3.txt\")",
-      "Bash(\"C:\\\\Program Files\\\\MetaTrader 5\\\\metaeditor64.exe\" /compile:\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Roaming\\\\MetaQuotes\\\\Terminal\\\\C84535A6B43B3F94C032314C1C9A9F5B\\\\MQL5\\\\Experts\\\\RSI_v37_Original_v4.mq5\" /log:\"C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI\\\\compile_log_v4.txt\")"
+      "Bash(\"C:\\\\Program Files\\\\MetaTrader 5\\\\metaeditor64.exe\" /compile:\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Roaming\\\\MetaQuotes\\\\Terminal\\\\C84535A6B43B3F94C032314C1C9A9F5B\\\\MQL5\\\\Experts\\\\RSI_v37_Original_v4.mq5\" /log:\"C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI\\\\compile_log_v4.txt\")",
+      "Bash(\"C:\\\\Program Files\\\\MetaTrader 5\\\\metaeditor64.exe\" /compile:\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Roaming\\\\MetaQuotes\\\\Terminal\\\\C84535A6B43B3F94C032314C1C9A9F5B\\\\MQL5\\\\Experts\\\\RSI_v37_Original_v5.mq5\" /log:\"C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI\\\\compile_log_v5.txt\")",
+      "Bash(cmd /c copy \"C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI\\\\mql5\\\\Experts\\\\GBPUSD_H1_QuadLayer_v69.mq5\" \"C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI\\\\mql5\\\\Experts\\\\GBPUSD_H1_QuadLayer_v2.mq5\")",
+      "Bash(\"C:\\\\Program Files\\\\MetaTrader 5\\\\metaeditor64.exe\" /compile:\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Roaming\\\\MetaQuotes\\\\Terminal\\\\C84535A6B43B3F94C032314C1C9A9F5B\\\\MQL5\\\\Experts\\\\RSI_v37_Original_v6c.mq5\" /log:\"C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI\\\\compile_log_v6c.txt\")",
+      "Bash(\"C:\\\\Program Files\\\\MetaTrader 5\\\\metaeditor64.exe\" /compile:\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Roaming\\\\MetaQuotes\\\\Terminal\\\\C84535A6B43B3F94C032314C1C9A9F5B\\\\MQL5\\\\Experts\\\\RSI_v37_Original_v6d.mq5\" /log:\"C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI\\\\compile_log_v6d.txt\")",
+      "Bash(cmd /c \"python C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI\\\\scripts\\\\read_backtest_report.py\")",
+      "Bash(cmd /c \"cd /d C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI && python scripts\\\\read_backtest_report.py 2>&1\")",
+      "Bash(\"C:\\\\Program Files\\\\MetaTrader 5\\\\metaeditor64.exe\" /compile:\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Roaming\\\\MetaQuotes\\\\Terminal\\\\C84535A6B43B3F94C032314C1C9A9F5B\\\\MQL5\\\\Experts\\\\RSI_v37_Original_v8.mq5\" /log:\"C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI\\\\compile_log_v8.txt\")",
+      "Bash(\"C:\\\\Program Files\\\\MetaTrader 5\\\\metaeditor64.exe\" /compile:\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Roaming\\\\MetaQuotes\\\\Terminal\\\\C84535A6B43B3F94C032314C1C9A9F5B\\\\MQL5\\\\Experts\\\\RSI_v37_Original_v9.mq5\" /log:\"C:\\\\Users\\\\Administrator\\\\Music\\\\SURGE-WSI\\\\compile_log_v9.txt\")",
+      "Bash(MT5_PASSWORD=\"iy#K5L7sF\" python \"C:/Users/Administrator/Music/SURGE-WSI/strategies/rsi_v37_optimized/export_backtest_report.py\")",
+      "Bash(MT5_PASSWORD=\"iy#K5L7sF\" python \"C:/Users/Administrator/Music/SURGE-WSI/backtest/h1_strategy/backtest_rsi_v10_regime_hunter.py\")",
+      "Bash(set \"MT5_LOGIN=61045904\")",
+      "Bash(set \"MT5_SERVER=FinexBisnisSolusi-Demo\")",
+      "Bash(\"C:/Program Files/Finex Bisnis Solusi MT5 Terminal/metaeditor64.exe\" /compile:\"C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/C84535A6B43B3F94C032314C1C9A9F5B/MQL5/Experts/RSI_v37_Original_v10.mq5\" /log:\"C:/Users/Administrator/Music/SURGE-WSI/compile_log_v10.txt\")"
     ]
   },
   "enableAllProjectMcpServers": true,

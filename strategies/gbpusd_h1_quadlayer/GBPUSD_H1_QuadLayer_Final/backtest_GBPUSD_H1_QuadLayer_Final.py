@@ -226,7 +226,7 @@ def should_skip_by_session(hour: int, poi_type: str) -> tuple[bool, str]:
 # CONFIGURATION v6.4 - DUAL-LAYER QUALITY FILTER
 # Using values from strategy_config.py
 # ============================================================
-INITIAL_BALANCE = 5_000.0
+INITIAL_BALANCE = 50_000.0
 RISK_PERCENT = RISK.risk_percent
 SL_ATR_MULT = RISK.sl_atr_mult
 TP_RATIO = RISK.tp_ratio
