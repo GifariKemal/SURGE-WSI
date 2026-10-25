@@ -93,6 +93,12 @@ secrets.yaml
 credentials.json
 
 # -----------------------------------------------------------------------------
+# Claude Code Settings (contains local credentials)
+# -----------------------------------------------------------------------------
+.claude/settings.local.json
+.claude/plans/
+
+# -----------------------------------------------------------------------------
 # MT5 / Trading Specific
 # -----------------------------------------------------------------------------
 *.ex5
@@ -143,3 +149,6 @@ temp/
 *.temp
 *.bak
 nul
+
+# Strategy secrets (Telegram token etc), keep local only
+strategies/**/config.env
